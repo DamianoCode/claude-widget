@@ -1,0 +1,4 @@
+* text=auto
+# Windows PowerShell 5.1 czyta skrypty bez BOM jako cp1250 — BOM i CRLF zostają nietknięte.
+*.ps1 text eol=crlf
+*.vbs text eol=crlf

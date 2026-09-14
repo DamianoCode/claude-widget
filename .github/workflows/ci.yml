@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Widżet działa tylko na Windows, a testy hooka używają ścieżek Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm test
+      - name: PowerShell scripts parse and carry a BOM
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($file in Get-ChildItem -Recurse -Filter *.ps1) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors)
+            foreach ($e in $errors) { "$($file.Name):$($e.Extent.StartLineNumber) $($e.Message)"; $failed = $true }
+            $head = [IO.File]::ReadAllBytes($file.FullName) | Select-Object -First 3
+            if (($head -join ',') -ne '239,187,191') { "$($file.Name): no UTF-8 BOM - Windows PowerShell 5.1 would misread Polish text"; $failed = $true }
+          }
+          if ($failed) { exit 1 }
