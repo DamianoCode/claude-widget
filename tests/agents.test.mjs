@@ -87,12 +87,15 @@ test('a finished background session leaves the widget after 12 hours', () => {
 test('a blocked session says what it waits for, and a stopped one is dropped', () => {
   const run = runner();
   const output = run([
-    background({ state: 'blocked', waitingFor: 'Permission to run: npm test' }),
+    // The value Claude Code 2.1.270 reported for a session blocked on AskUserQuestion.
+    background({ state: 'blocked', status: 'waiting', waitingFor: 'input needed' }),
     background({ sessionId: 'aaaaaaaa-0000-0000-0000-000000000000', id: 'aaaaaaaa', state: 'blocked', waitingFor: { tool: 'Bash' } }),
     background({ sessionId: 'bbbbbbbb-0000-0000-0000-000000000000', id: 'bbbbbbbb', state: 'stopped' }),
+    background({ sessionId: 'cccccccc-0000-0000-0000-000000000000', id: 'cccccccc', state: 'blocked', waitingFor: 'permission needed' }),
   ], 5000);
-  assert.equal(byId(output, background().sessionId).waitingFor, 'Permission to run: npm test');
-  assert.equal(byId(output, 'aaaaaaaa-0000-0000-0000-000000000000').waitingFor, 'Bash');
+  assert.equal(byId(output, background().sessionId).waitingFor, 'Czeka na Twoją odpowiedź');
+  assert.equal(byId(output, 'aaaaaaaa-0000-0000-0000-000000000000').waitingFor, 'Bash', 'an unknown value is shown as is');
+  assert.equal(byId(output, 'cccccccc-0000-0000-0000-000000000000').waitingFor, 'Czeka na Twoją zgodę');
   assert.equal(byId(output, 'bbbbbbbb-0000-0000-0000-000000000000'), undefined);
 });
 

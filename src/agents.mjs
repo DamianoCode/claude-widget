@@ -92,15 +92,25 @@ export function track(listed, previous, now) {
   return sessions;
 }
 
-// `waitingFor` nazywa to, na co sesja czeka; dokumentacja nie podaje jego kształtu,
-// więc przyjmuje się tekst albo obiekt z jednym z typowych pól.
+// `waitingFor` nazywa to, na co sesja czeka. W 2.1.270 to krótkie angielskie hasło (np. „input
+// needed”) — znane tłumaczy się na polski, resztę pokazuje bez zmian. Na wypadek zmiany formatu
+// przyjmuje się też obiekt z jednym z typowych pól.
 function describeWaiting(waitingFor) {
-  if (typeof waitingFor === 'string') return shorten(waitingFor.trim());
-  if (waitingFor && typeof waitingFor === 'object') {
-    const text = waitingFor.question ?? waitingFor.message ?? waitingFor.description ?? waitingFor.tool ?? waitingFor.type;
-    if (typeof text === 'string') return shorten(text.trim());
+  // Wewnątrz funkcji, a nie jako stała modułu: main() rusza, zanim niżej zadeklarowane stałe
+  // zostaną zainicjowane.
+  const labels = [
+    [/input|question|answer/i, 'Czeka na Twoją odpowiedź'],
+    [/permission|approv/i, 'Czeka na Twoją zgodę'],
+    [/login|auth/i, 'Wymaga ponownego logowania'],
+  ];
+  let text = typeof waitingFor === 'string' ? waitingFor : null;
+  if (!text && waitingFor && typeof waitingFor === 'object') {
+    const candidate = waitingFor.question ?? waitingFor.message ?? waitingFor.description ?? waitingFor.tool ?? waitingFor.type;
+    if (typeof candidate === 'string') text = candidate;
   }
-  return '';
+  if (!text || !text.trim()) return '';
+  const known = labels.find(([pattern]) => pattern.test(text));
+  return known ? known[1] : shorten(text.trim());
 }
 
 function shorten(text) {

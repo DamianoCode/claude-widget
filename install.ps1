@@ -50,4 +50,4 @@ if ($NoAutostart) {
 Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList ('"' + $launcher + '"')
 Write-Host ''
 Write-Host 'Gotowe. Widżet stoi przy prawej krawędzi ekranu, a jego ikona jest w zasobniku systemowym.'
-Write-Host 'Otwarte sesje Claude Code pojawią się w nim po najbliższym poleceniu, nowe od razu.'
+Write-Host 'Otwarte sesje Claude Code, także te w tle, pojawią się w nim w ciągu kilku sekund.'
