@@ -480,8 +480,66 @@ function Get-Sessions([double]$nowMs) {
                 ContextSize   = if ($usage) { $usage.contextSize } else { $null }
             })
     }
+    Merge-AgentSessions $sessions
     # Najpilniejsza sesja na początku; przy remisie ta, która zmieniła stan najpóźniej.
     $sessions | Sort-Object @{ Expression = { $Kinds[$_.Kind].Rank }; Descending = $true }, @{ Expression = { $_.Since }; Descending = $true }
+}
+
+# Dokłada sesje z listy `claude agents --json` (agents.mjs): sesje w tle, których hooki widżet
+# pomija, i sesje w terminalu, które nie wysłały jeszcze żadnego zdarzenia. Nieaktualna lista
+# (np. brak claude w PATH) jest pomijana — widżet działa wtedy na samych hookach.
+function Merge-AgentSessions($sessions) {
+    $agents = Read-SharedJson (Join-Path $StateDir 'agents.json')
+    $nowMs = [double][DateTimeOffset]::Now.ToUnixTimeMilliseconds()
+    if (-not $agents -or $agents.ok -ne $true -or ($nowMs - [double]$agents.updatedAt) -gt $AgentsStaleMs) { return }
+
+    $known = @{}
+    foreach ($session in $sessions) { $known[$session.Id] = $session }
+    foreach ($entry in @($agents.sessions)) {
+        $id = "$($entry.sessionId)"
+        if (-not $id) { continue }
+        $project = if ($entry.cwd) { Split-Path "$($entry.cwd)" -Leaf } else { 'sesja' }
+
+        if ($entry.kind -eq 'background') {
+            # Po /bg rozmową zarządza proces nadzorczy, a hooki tej sesji są już pomijane,
+            # więc jej dawny stan z hooka jest nieaktualny.
+            if ($known.ContainsKey($id)) { [void]$sessions.Remove($known[$id]) }
+            $seen = Read-SharedJson (Join-Path $StateDir "$id.seen.json")
+            $seenAt = if ($seen) { [double]$seen.seenAt } else { 0 }
+            $kind = switch ("$($entry.state)") {
+                'blocked' { 'czeka' }
+                'failed'  { 'czeka' }
+                'done'    { if ($entry.fresh -eq $true -and $seenAt -lt [double]$entry.since) { 'nowe' } else { 'bezczynna' } }
+                default   { 'pracuje' }
+            }
+            $detail = switch ("$($entry.state)") {
+                'blocked' { if ($entry.waitingFor) { "$($entry.waitingFor)" } else { 'Czeka na Twoją odpowiedź' } }
+                'failed'  { 'Zakończona błędem' }
+                default   { '' }
+            }
+            $sessions.Add([pscustomobject]@{
+                    Id = $id; Kind = $kind; Since = [double]$entry.since; Detail = $detail; Summary = ''
+                    Background = 0; Pid = 0; Project = $project
+                    Name = if ($entry.name) { "$($entry.name)" } else { "$($entry.id)" }
+                    ContextPct = $null; ContextTokens = $null; ContextSize = $null
+                    IsBackground = $true; ShortId = "$($entry.id)"
+                })
+        } elseif (-not $known.ContainsKey($id) -and $entry.pid) {
+            # Sesja w terminalu bez zdarzeń z hooka, np. otwarta przed instalacją widżetu.
+            $usage = Read-SharedJson (Join-Path $StateDir "$id.usage.json")
+            if ($usage -and $usage.project) { $project = "$($usage.project)" }
+            $sessions.Add([pscustomobject]@{
+                    Id = $id; Kind = $(if ($entry.status -eq 'busy') { 'pracuje' } else { 'bezczynna' })
+                    Since = if ($entry.startedAt) { [double]$entry.startedAt } else { $nowMs }; Detail = ''; Summary = ''
+                    Background = 0; Pid = [int]$entry.pid; Project = $project
+                    Name = if ($usage -and $usage.name) { "$($usage.name)" } else { $project }
+                    ContextPct = if ($usage) { $usage.contextPct } else { $null }
+                    ContextTokens = if ($usage) { $usage.contextTokens } else { $null }
+                    ContextSize = if ($usage) { $usage.contextSize } else { $null }
+                    IsBackground = $false; ShortId = ''
+                })
+        }
+    }
 }
 
 function Set-Seen([string]$id) {
@@ -509,8 +567,24 @@ function Resolve-HostPid([int]$claudePid) {
     $found
 }
 
+# Sesja w tle nie ma okna — otwiera się ją w nowej karcie Windows Terminal (`claude attach`),
+# a bez Windows Terminal w nowym oknie konsoli. Wyjście z niej (← albo /exit) jej nie zatrzymuje.
+function Open-BackgroundSession($session) {
+    if (-not $session.ShortId) { return }
+    $terminal = Get-Command wt.exe -ErrorAction SilentlyContinue
+    if ($terminal) {
+        # Średnik rozdziela polecenia wt, a cudzysłów zamknąłby argument — oba znikają z tytułu.
+        $title = $session.Name -replace '[;"]', ''
+        if ($title.Length -gt 40) { $title = $title.Substring(0, 40) }
+        Start-Process $terminal.Source -ArgumentList "-w 0 nt --title `"$title`" claude attach $($session.ShortId)"
+    } else {
+        Start-Process 'claude' -ArgumentList "attach $($session.ShortId)"
+    }
+}
+
 function Show-SessionTerminal($session) {
     Set-Seen $session.Id
+    if ($session.IsBackground) { Open-BackgroundSession $session; return }
     if (-not $session.Pid) { return }
     $hostPid = Resolve-HostPid $session.Pid
     if (-not $hostPid) { return }
@@ -632,7 +706,8 @@ function Get-SessionMeta($session, [double]$nowMs) {
         'nowe'    { "nowy wynik · $detail" }
         default   { "bezczynna $detail" }
     }
-    "$($session.Project) · $what"
+    $where = if ($session.IsBackground) { "$($session.Project) · w tle" } else { $session.Project }
+    "$where · $what"
 }
 
 function Get-ContextNote($session) {
@@ -1128,6 +1203,31 @@ $RefreshTimer.Add_Tick({
         Invoke-Safely 'pełny ekran' { Update-Fullscreen }
         Invoke-Safely 'przejrzenie' { Update-SeenByFocus ([double][DateTimeOffset]::Now.ToUnixTimeMilliseconds()) }
     })
+
+# Co 4 s: agents.mjs odświeża listę sesji z `claude agents --json` w osobnym procesie, więc okno
+# nigdy na niego nie czeka. Nowy przebieg rusza dopiero po zakończeniu poprzedniego.
+$AgentsScript = Join-Path $PSScriptRoot 'agents.mjs'
+$AgentsStaleMs = 20000
+$script:AgentsProcess = $null
+$AgentsTimer = New-Object Windows.Threading.DispatcherTimer
+$AgentsTimer.Interval = [TimeSpan]::FromSeconds(4)
+$AgentsTimer.Add_Tick({
+        Invoke-Safely 'lista sesji' {
+            $running = $script:AgentsProcess
+            if ($running -and -not $running.HasExited) {
+                if (((Get-Date) - $running.StartTime).TotalSeconds -gt 30) { $running.Kill() }
+                return
+            }
+            if ($running) { $running.Dispose() }
+            $info = New-Object Diagnostics.ProcessStartInfo 'node'
+            $info.Arguments = '"' + $AgentsScript + '"'
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $info.EnvironmentVariables['CLAUDE_WIDGET_STATE_DIR'] = $StateDir
+            $script:AgentsProcess = [Diagnostics.Process]::Start($info)
+        }
+    })
+$AgentsTimer.Start()
 
 # Co 0,2 s: czy hook albo statusline coś zapisały. Każdy zapis podmienia plik przez zmianę
 # nazwy, więc wystarczy znacznik czasu katalogu — zmianę stanu widać od razu, nie po sekundzie.

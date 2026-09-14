@@ -73,7 +73,15 @@ Ctrl+Alt+C byłoby naturalniejsze, ale na polskiej klawiaturze to AltGr+C, czyli
 - `widget.ps1` (WPF) czyta te pliki i rysuje widżet. Sam zapisuje tylko `<sesja>.seen.json` —
   kiedy przejrzałeś wynik. `start-widget.vbs` uruchamia go bez okna konsoli.
 
-Sesje uruchamiane ze skryptów (`claude -p`, SDK) nie trafiają do widżetu.
+- `agents.mjs` co kilka sekund pyta `claude agents --json --all` o listę sesji i zapisuje ją do
+  `agents.json`. Dzięki temu widżet pokazuje też **sesje w tle** (widok agentów, `claude --bg`,
+  `/bg`, `/fork`) — z dopiskiem „w tle”; kliknięcie otwiera taką sesję w nowej karcie terminala
+  (`claude attach`). Zna też sesje w terminalu, które nie wysłały jeszcze żadnego zdarzenia.
+  Bez `claude` w `PATH` widżet działa dalej, tylko bez sesji w tle.
+
+Sesje uruchamiane ze skryptów (`claude -p`, SDK) nie trafiają do widżetu. Sesja w tle, którą
+widżet zastał już skończoną (np. po restarcie komputera), nie zapala zielonego — nowy wynik to
+tylko taki, którego zakończenie widżet widział.
 
 ## Ograniczenia
 
