@@ -8,8 +8,9 @@
 //   --now <ms>      bieżący czas w milisekundach (testy)
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync, realpathSync } from 'node:fs';
+import { join, delimiter } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STATE_DIR, readJson, writeJson } from './store.mjs';
 
 const AGENTS_PATH = join(STATE_DIR, 'agents.json');
@@ -18,8 +19,12 @@ const TIMEOUT_MS = 15000;
 // (w widoku agentów zostaje, dopóki jej nie usuniesz).
 const RECENT_MS = 12 * 3600 * 1000;
 const WAITING_MAX = 70;
-
-main();
+const WAITING_LABELS = [
+  [/input|question|answer/i, 'Czeka na Twoją odpowiedź'],
+  [/permission|approv/i, 'Czeka na Twoją zgodę'],
+  [/login|auth/i, 'Wymaga ponownego logowania'],
+];
+const RUNNABLE = new Set(['.exe', '.cmd', '.bat']);
 
 function main() {
   const now = Number(argument('--now') ?? Date.now());
@@ -42,16 +47,36 @@ function readListing() {
 }
 
 function runClaude() {
-  // Przez powłokę, bo claude bywa zainstalowany jako claude.exe albo jako claude.cmd z npm.
-  const result = spawnSync('claude', ['agents', '--json', '--all'], {
-    encoding: 'utf8',
-    timeout: TIMEOUT_MS,
-    windowsHide: true,
-    shell: process.platform === 'win32',
-  });
+  const claude = findClaude();
+  if (!claude) throw new Error('nie znaleziono claude w PATH');
+  const options = { encoding: 'utf8', timeout: TIMEOUT_MS, windowsHide: true };
+  // claude.exe rusza bez powłoki. claude.cmd z npm uruchomi tylko cmd.exe — wtedy całe polecenie
+  // idzie jednym napisem, ze ścieżką w cudzysłowie.
+  const result = /\.(cmd|bat)$/i.test(claude)
+    ? spawnSync(`"${claude}" agents --json --all`, { ...options, shell: true })
+    : spawnSync(claude, ['agents', '--json', '--all'], options);
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`claude agents: kod ${result.status} ${String(result.stderr ?? '').trim()}`);
   return result.stdout;
+}
+
+// Pierwszy claude w PATH, w kolejności katalogów, a w katalogu — rozszerzeń z PATHEXT. Tak samo
+// znalazłaby go powłoka, ale bez uruchamiania jej co kilka sekund.
+export function findClaude(env = process.env, exists = existsSync) {
+  if (process.platform !== 'win32') return 'claude';
+  const extensions = String(env.PATHEXT ?? '.EXE;.CMD')
+    .split(';')
+    .map((extension) => extension.trim().toLowerCase())
+    .filter((extension) => RUNNABLE.has(extension));
+  for (const entry of String(env.PATH ?? '').split(delimiter)) {
+    const dir = entry.trim().replace(/^"(.*)"$/, '$1');
+    if (!dir) continue;
+    for (const extension of extensions) {
+      const candidate = join(dir, `claude${extension}`);
+      if (exists(candidate)) return candidate;
+    }
+  }
+  return null;
 }
 
 // Łączy bieżącą listę z poprzednią, żeby wiedzieć, od kiedy sesja jest w danym stanie
@@ -96,20 +121,13 @@ export function track(listed, previous, now) {
 // needed”) — znane tłumaczy się na polski, resztę pokazuje bez zmian. Na wypadek zmiany formatu
 // przyjmuje się też obiekt z jednym z typowych pól.
 function describeWaiting(waitingFor) {
-  // Wewnątrz funkcji, a nie jako stała modułu: main() rusza, zanim niżej zadeklarowane stałe
-  // zostaną zainicjowane.
-  const labels = [
-    [/input|question|answer/i, 'Czeka na Twoją odpowiedź'],
-    [/permission|approv/i, 'Czeka na Twoją zgodę'],
-    [/login|auth/i, 'Wymaga ponownego logowania'],
-  ];
   let text = typeof waitingFor === 'string' ? waitingFor : null;
   if (!text && waitingFor && typeof waitingFor === 'object') {
     const candidate = waitingFor.question ?? waitingFor.message ?? waitingFor.description ?? waitingFor.tool ?? waitingFor.type;
     if (typeof candidate === 'string') text = candidate;
   }
   if (!text || !text.trim()) return '';
-  const known = labels.find(([pattern]) => pattern.test(text));
+  const known = WAITING_LABELS.find(([pattern]) => pattern.test(text));
   return known ? known[1] : shorten(text.trim());
 }
 
@@ -120,4 +138,15 @@ function shorten(text) {
 function argument(name) {
   const index = process.argv.indexOf(name);
   return index > -1 ? process.argv[index + 1] : undefined;
+}
+
+// Node rozwiązuje dowiązania w ścieżce modułu, ale nie w argv — katalog domowy bywa junction.
+if (isRunDirectly()) main();
+
+function isRunDirectly() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
 }

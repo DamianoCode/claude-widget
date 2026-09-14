@@ -1,6 +1,7 @@
 ﻿# Widżet Claude Code: sygnalizator stanu sesji i limity konta, przyklejony do krawędzi ekranu.
 # Czyta to, co hook.mjs i statusline.mjs zapisują w katalogu stanu. Sam zapisuje tam tylko
-# znaczniki <sesja>.seen.json — kiedy przejrzałeś wynik danej sesji.
+# znaczniki <sesja>.seen.json — kiedy przejrzałeś wynik danej sesji — i sprząta pliki sesji,
+# które zamknęły się bez SessionEnd.
 #   -StateDir  katalog stanu (domyślnie ~/.claude/widget/state); inny katalog = osobna instancja
 #
 # Światła są niezależne, każde z licznikiem sesji:
@@ -430,7 +431,7 @@ function Read-SharedJson([string]$path) {
 }
 
 # Emituje sesje do potoku; wywołujący zbiera je przez @(...), co działa dla 0, 1 i wielu.
-# Sesja, której proces Claude Code już nie żyje, zamknęła się bez SessionEnd — pomija się ją.
+# Sesja, której proces Claude Code już nie żyje, zamknęła się bez SessionEnd — jej pliki się usuwa.
 function Get-Sessions([double]$nowMs) {
     if (-not (Test-Path -LiteralPath $StateDir)) { return }
     $raw = New-Object Collections.Generic.List[object]
@@ -440,9 +441,9 @@ function Get-Sessions([double]$nowMs) {
     }
 
     $pids = @($raw | ForEach-Object { $_.State.pid } | Where-Object { $_ })
-    $alive = @{}
+    $processes = @{}
     if ($pids.Count) {
-        Get-Process -Id $pids -ErrorAction SilentlyContinue | ForEach-Object { $alive[[int]$_.Id] = $_.ProcessName }
+        Get-Process -Id $pids -ErrorAction SilentlyContinue | ForEach-Object { $processes[[int]$_.Id] = $_ }
     }
 
     $sessions = New-Object Collections.Generic.List[object]
@@ -450,10 +451,9 @@ function Get-Sessions([double]$nowMs) {
         $state = $entry.State
         $id = $entry.Id
         if ($state.pid) {
-            # Nazwa chroni przed ponownym użyciem PID przez zupełnie inny program.
-            $processName = $alive[[int]$state.pid]
-            if (-not $processName -or $processName -notmatch '^(claude|node)') { continue }
+            if (-not (Test-SessionProcess $processes[[int]$state.pid] $state)) { Remove-ClosedSession $id $state; continue }
         } elseif ($nowMs - [double]$state.updatedAt -gt $StaleMs) {
+            Remove-ClosedSession $id $state
             continue
         }
         $usage = Read-SharedJson (Join-Path $StateDir "$id.usage.json")
@@ -495,6 +495,12 @@ function Merge-AgentSessions($sessions) {
 
     $known = @{}
     foreach ($session in $sessions) { $known[$session.Id] = $session }
+    # Lista bywa sprzed 20 s, więc sesja w terminalu, która się właśnie zamknęła, jeszcze na niej jest.
+    $alive = @{}
+    $unknownPids = @($agents.sessions | Where-Object { $_.kind -ne 'background' -and $_.pid -and -not $known.ContainsKey("$($_.sessionId)") } | ForEach-Object { [int]$_.pid })
+    if ($unknownPids.Count) {
+        Get-Process -Id $unknownPids -ErrorAction SilentlyContinue | ForEach-Object { $alive[[int]$_.Id] = $true }
+    }
     foreach ($entry in @($agents.sessions)) {
         $id = "$($entry.sessionId)"
         if (-not $id) { continue }
@@ -524,7 +530,7 @@ function Merge-AgentSessions($sessions) {
                     ContextPct = $null; ContextTokens = $null; ContextSize = $null
                     IsBackground = $true; ShortId = "$($entry.id)"
                 })
-        } elseif (-not $known.ContainsKey($id) -and $entry.pid) {
+        } elseif (-not $known.ContainsKey($id) -and $entry.pid -and $alive.ContainsKey([int]$entry.pid)) {
             # Sesja w terminalu bez zdarzeń z hooka, np. otwarta przed instalacją widżetu.
             $usage = Read-SharedJson (Join-Path $StateDir "$id.usage.json")
             if ($usage -and $usage.project) { $project = "$($usage.project)" }
@@ -539,6 +545,41 @@ function Merge-AgentSessions($sessions) {
                     IsBackground = $false; ShortId = ''
                 })
         }
+    }
+}
+
+# Po zamknięciu sesji jej PID może dostać inny proces. Nazwa odsiewa inne programy, a czas startu
+# inny proces claude albo node: ten, który ruszył po ostatnim zapisie hooka, nie jest tą sesją.
+function Test-SessionProcess($process, $state) {
+    if (-not $process -or $process.ProcessName -notmatch '^(claude|node)') { return $false }
+    try { $startMs = ([DateTimeOffset]$process.StartTime).ToUnixTimeMilliseconds() } catch { return $true }
+    $startMs -le [double]$state.updatedAt
+}
+
+# Usuwa stan i dane statusline sesji zamkniętej bez SessionEnd (zamknięte okno, awaria). Znacznik
+# przejrzenia zostaje, bo sesja mogła przejść do tła; stare znaczniki zbiera Remove-OrphanFiles.
+function Remove-ClosedSession([string]$id, $state) {
+    # Wznowiona sesja (ten sam id, nowy proces) mogła właśnie zapisać swój stan — ten zostaje.
+    $current = Read-SharedJson (Join-Path $StateDir "$id.state.json")
+    if ($current -and "$($current.pid)" -ne "$($state.pid)") { return }
+    if ($state.pid) { $HostCache.Remove([int]$state.pid) }
+    foreach ($kind in 'state', 'usage') {
+        Remove-Item -LiteralPath (Join-Path $StateDir "$id.$kind.json") -ErrorAction SilentlyContinue
+    }
+}
+
+# Pliki bez sesji: znaczniki przejrzenia i dane statusline po sesjach, których stanu już nie ma,
+# oraz pliki tymczasowe po przerwanym zapisie. Doba zapasu, bo skończona sesja w tle zostaje na
+# liście 12 h i do tego czasu jej znacznik przejrzenia jest potrzebny.
+function Remove-OrphanFiles {
+    if (-not (Test-Path -LiteralPath $StateDir)) { return }
+    $cutoff = (Get-Date).AddHours(-24)
+    foreach ($file in Get-ChildItem -LiteralPath $StateDir -File) {
+        if ($file.LastWriteTime -gt $cutoff) { continue }
+        $orphan = if ($file.Name -match '^(.+)\.(seen|usage)\.json$') {
+            -not (Test-Path -LiteralPath (Join-Path $StateDir "$($Matches[1]).state.json"))
+        } else { $file.Name -like '*.tmp' }
+        if ($orphan) { Remove-Item -LiteralPath $file.FullName -ErrorAction SilentlyContinue }
     }
 }
 
@@ -688,10 +729,20 @@ function Get-LimitView($limit, [string]$window, $measuredAt, [double]$nowMs, [bo
     $view
 }
 
+function Get-WaitReason($session) { if ($session.Detail) { $session.Detail } else { 'Potrzebna Twoja decyzja' } }
+
+# Czas czekania w pełnych minutach: sekundy zmieniałyby tekst wiersza co sekundę, a wtedy panel
+# przebudowuje wiersze — akurat ten, który najpewniej zaraz klikniesz.
+function Get-WaitSpan($session, [double]$nowMs) {
+    $elapsed = $nowMs - $session.Since
+    if ($elapsed -lt 60000) { '<1 min' } else { Format-Span $elapsed }
+}
+
+# Przy sesji, która czeka, czas idzie na początek — na wąskiej karcie długi powód zostaje ucięty.
 function Get-Detail($session, [double]$nowMs) {
     $elapsed = $nowMs - $session.Since
     switch ($session.Kind) {
-        'czeka'   { if ($session.Detail) { $session.Detail } else { 'Potrzebna Twoja decyzja' } }
+        'czeka'   { "$(Get-WaitSpan $session $nowMs) · $(Get-WaitReason $session)" }
         'pracuje' { if ($session.Background) { "$($session.Detail) · $(Format-Span $elapsed)" } else { "od $(Format-Span $elapsed)" } }
         'nowe'    { if ($elapsed -lt 60000) { 'przed chwilą' } else { "$(Format-Span $elapsed) temu" } }
         default   { if ($elapsed -lt 60000) { 'przed chwilą' } else { "od $(Format-Span $elapsed)" } }
@@ -701,7 +752,10 @@ function Get-Detail($session, [double]$nowMs) {
 function Get-SessionMeta($session, [double]$nowMs) {
     $detail = Get-Detail $session $nowMs
     $what = switch ($session.Kind) {
-        'czeka'   { $detail.Substring(0, 1).ToLower() + $detail.Substring(1) }
+        'czeka'   {
+            $reason = Get-WaitReason $session
+            "czeka $(Get-WaitSpan $session $nowMs) · $($reason.Substring(0, 1).ToLower() + $reason.Substring(1))"
+        }
         'pracuje' { "pracuje $detail" }
         'nowe'    { "nowy wynik · $detail" }
         default   { "bezczynna $detail" }
@@ -1204,11 +1258,14 @@ $RefreshTimer.Add_Tick({
         Invoke-Safely 'przejrzenie' { Update-SeenByFocus ([double][DateTimeOffset]::Now.ToUnixTimeMilliseconds()) }
     })
 
-# Co 4 s: agents.mjs odświeża listę sesji z `claude agents --json` w osobnym procesie, więc okno
-# nigdy na niego nie czeka. Nowy przebieg rusza dopiero po zakończeniu poprzedniego.
+# agents.mjs odświeża listę sesji z `claude agents --json` w osobnym procesie, więc okno nigdy na
+# niego nie czeka. Co 4 s, gdy coś pracuje albo czeka w tle lub panel jest otwarty; poza tym co 20 s,
+# bo każdy przebieg to dwa nowe procesy. Nowy przebieg rusza dopiero po zakończeniu poprzedniego.
 $AgentsScript = Join-Path $PSScriptRoot 'agents.mjs'
-$AgentsStaleMs = 20000
+$AgentsIdleSeconds = 20
+$AgentsStaleMs = 60000
 $script:AgentsProcess = $null
+$script:AgentsStartedAt = [DateTime]::MinValue
 $AgentsTimer = New-Object Windows.Threading.DispatcherTimer
 $AgentsTimer.Interval = [TimeSpan]::FromSeconds(4)
 $AgentsTimer.Add_Tick({
@@ -1218,7 +1275,10 @@ $AgentsTimer.Add_Tick({
                 if (((Get-Date) - $running.StartTime).TotalSeconds -gt 30) { $running.Kill() }
                 return
             }
+            $active = $Panel.IsOpen -or @($script:Sessions | Where-Object { $_.IsBackground -and $_.Kind -in 'czeka', 'pracuje' }).Count -gt 0
+            if (-not $active -and ((Get-Date) - $script:AgentsStartedAt).TotalSeconds -lt $AgentsIdleSeconds) { return }
             if ($running) { $running.Dispose() }
+            $script:AgentsStartedAt = Get-Date
             $info = New-Object Diagnostics.ProcessStartInfo 'node'
             $info.Arguments = '"' + $AgentsScript + '"'
             $info.UseShellExecute = $false
@@ -1244,6 +1304,11 @@ $WatchTimer.Add_Tick({
         }
     })
 
+# Co 30 min: porzucone pliki w katalogu stanu.
+$CleanupTimer = New-Object Windows.Threading.DispatcherTimer
+$CleanupTimer.Interval = [TimeSpan]::FromMinutes(30)
+$CleanupTimer.Add_Tick({ Invoke-Safely 'sprzątanie' { Remove-OrphanFiles } })
+
 $window.Add_Loaded({
         $script:Hwnd = (New-Object Windows.Interop.WindowInteropHelper $window).Handle
         Restore-Settings
@@ -1261,13 +1326,16 @@ $window.Add_Loaded({
         }
         $PanelHint.Text = $hint
         Invoke-Safely 'start' { Update-View }
+        Invoke-Safely 'sprzątanie' { Remove-OrphanFiles }
         $RefreshTimer.Start()
         $WatchTimer.Start()
+        $CleanupTimer.Start()
     })
 
 $window.Add_Closed({
         $RefreshTimer.Stop()
         $WatchTimer.Stop()
+        $CleanupTimer.Stop()
         $Tray.Visible = $false
         [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
     })

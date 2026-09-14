@@ -3,7 +3,8 @@
 Mały sygnalizator przy krawędzi ekranu Windows, który pokazuje, co dzieje się w Twoich sesjach
 Claude Code — bez przełączania się między terminalami.
 
-- 🔴 **czerwone** — któraś sesja czeka na Ciebie: prośba o zgodę, pytanie albo błąd API (pulsuje)
+- 🔴 **czerwone** — któraś sesja czeka na Ciebie: prośba o zgodę, pytanie albo błąd API (pulsuje;
+  przy sesji widać, od ilu minut czeka)
 - 🟡 **żółte** — któraś sesja pracuje, także gdy tura się skończyła, a agenci pracują w tle
 - 🟢 **zielone** — któraś sesja ma nowy wynik, którego jeszcze nie widziałeś
 
@@ -71,10 +72,13 @@ Ctrl+Alt+C byłoby naturalniejsze, ale na polskiej klawiaturze to AltGr+C, czyli
 - `statusline.mjs` to jednocześnie linia statusu w terminalu i źródło danych o kontekście sesji
   oraz limitach konta (`<sesja>.usage.json`, `limits.json`).
 - `widget.ps1` (WPF) czyta te pliki i rysuje widżet. Sam zapisuje tylko `<sesja>.seen.json` —
-  kiedy przejrzałeś wynik. `start-widget.vbs` uruchamia go bez okna konsoli.
+  kiedy przejrzałeś wynik — i sprząta pliki sesji zamkniętych bez SessionEnd (zamknięte okno
+  terminala, awaria) oraz porzucone pliki starsze niż doba. Sesję uznaje za zamkniętą, gdy jej
+  proces nie żyje albo jego PID dostał już inny proces. `start-widget.vbs` uruchamia go bez okna
+  konsoli.
 
-- `agents.mjs` co kilka sekund pyta `claude agents --json --all` o listę sesji i zapisuje ją do
-  `agents.json`. Dzięki temu widżet pokazuje też **sesje w tle** (widok agentów, `claude --bg`,
+- `agents.mjs` pyta `claude agents --json --all` o listę sesji i zapisuje ją do `agents.json` —
+  co 4 s, gdy coś pracuje albo czeka w tle lub panel jest otwarty, a poza tym co 20 s. Dzięki temu widżet pokazuje też **sesje w tle** (widok agentów, `claude --bg`,
   `/bg`, `/fork`) — z dopiskiem „w tle”; kliknięcie otwiera taką sesję w nowej karcie terminala
   (`claude attach`). Zna też sesje w terminalu, które nie wysłały jeszcze żadnego zdarzenia.
   Bez `claude` w `PATH` widżet działa dalej, tylko bez sesji w tle.

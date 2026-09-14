@@ -147,6 +147,17 @@ test('the Claude Code process id is recorded with the state', () => {
   assert.equal(state.pid, process.pid);
 });
 
+test('a session picked up by a new process records the new process id and write time', () => {
+  // The widget treats a process that started after the last write as a stranger reusing the PID.
+  const dir = freshDir();
+  writeFileSync(join(dir, 'r1.state.json'), JSON.stringify({ state: 'pracuje', since: 1, turnStartedAt: 1, cwd: 'C:\\apps\\api', pid: 1, updatedAt: 5 }));
+  const before = Date.now();
+  const state = hookEvents(dir, 'r1')('PostToolUse', { tool_name: 'Read', tool_input: { file_path: 'a.txt' }, tool_response: {} });
+  assert.equal(state.state, 'pracuje', 'an event that changes nothing keeps the state');
+  assert.equal(state.pid, process.pid);
+  assert.ok(state.updatedAt >= before);
+});
+
 test('a turn that ends with work in the background stays yellow', () => {
   const dir = freshDir();
   const event = hookEvents(dir, 'b1');

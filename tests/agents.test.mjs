@@ -4,13 +4,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { findClaude } from '../src/agents.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'agents.mjs');
 const HOUR = 3600 * 1000;
+const WINDOWS_ONLY = { skip: process.platform !== 'win32' && 'PATH lookup with PATHEXT is Windows-only' };
 
 // Shapes as printed by Claude Code 2.1.270.
 const interactive = (overrides = {}) => ({
@@ -97,6 +99,61 @@ test('a blocked session says what it waits for, and a stopped one is dropped', (
   assert.equal(byId(output, 'aaaaaaaa-0000-0000-0000-000000000000').waitingFor, 'Bash', 'an unknown value is shown as is');
   assert.equal(byId(output, 'cccccccc-0000-0000-0000-000000000000').waitingFor, 'Czeka na Twoją zgodę');
   assert.equal(byId(output, 'bbbbbbbb-0000-0000-0000-000000000000'), undefined);
+});
+
+test('claude is found on PATH the way the shell would find it', WINDOWS_ONLY, () => {
+  const on = (...files) => (path) => files.includes(path);
+  const npm = 'C:\\npm';
+  const local = 'C:\\Users\\me\\.local\\bin';
+  const env = { PATH: `${npm};"${local}";`, PATHEXT: '.COM;.EXE;.BAT;.CMD;.VBS' };
+  assert.equal(findClaude(env, on(join(local, 'claude.exe'), join(npm, 'claude.cmd'))), join(npm, 'claude.cmd'), 'an earlier directory wins');
+  assert.equal(findClaude(env, on(join(npm, 'claude.cmd'), join(npm, 'claude.exe'))), join(npm, 'claude.exe'), 'within a directory PATHEXT decides');
+  assert.equal(findClaude(env, on(join(local, 'claude.exe'))), join(local, 'claude.exe'), 'a quoted directory is searched too');
+  assert.equal(findClaude(env, on()), null);
+});
+
+test('an npm-installed claude.cmd is run through the shell without the unescaped-arguments warning', WINDOWS_ONLY, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-widget-agents-'));
+  const bin = join(dir, 'bin with space');
+  // No backslashes or cmd metacharacters, so `echo` prints the JSON verbatim.
+  const listing = [interactive({ pid: 42, cwd: 'C:/apps/api' })];
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'claude.cmd'), `@echo off\r\necho ${JSON.stringify(listing)}\r\n`);
+  const result = spawnSync(process.execPath, [SCRIPT, '--now', '5000'], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin};${process.env.SystemRoot}\\System32`, CLAUDE_WIDGET_STATE_DIR: join(dir, 'state') },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /DEP0190/);
+  const output = JSON.parse(readFileSync(join(dir, 'state', 'agents.json'), 'utf8'));
+  assert.equal(output.ok, true, output.error);
+  assert.equal(output.sessions[0].pid, 42);
+});
+
+test('runs when reached through a junction, as with a linked home directory', WINDOWS_ONLY, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-widget-agents-'));
+  const link = join(dir, 'linked-src');
+  symlinkSync(dirname(SCRIPT), link, 'junction');
+  const fixture = join(dir, 'listing.json');
+  writeFileSync(fixture, JSON.stringify([interactive()]));
+  const result = spawnSync(process.execPath, [join(link, 'agents.mjs'), '--input', fixture, '--now', '5000'], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_WIDGET_STATE_DIR: join(dir, 'state') },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'state', 'agents.json'), 'utf8')).ok, true);
+});
+
+test('without claude on PATH the list is switched off with a reason', WINDOWS_ONLY, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-widget-agents-'));
+  const result = spawnSync(process.execPath, [SCRIPT, '--now', '5000'], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: dir, CLAUDE_WIDGET_STATE_DIR: join(dir, 'state') },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(readFileSync(join(dir, 'state', 'agents.json'), 'utf8'));
+  assert.equal(output.ok, false);
+  assert.match(output.error, /claude/);
 });
 
 test('a listing that cannot be read switches the feature off instead of keeping stale sessions', () => {
