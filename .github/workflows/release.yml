@@ -37,5 +37,5 @@ jobs:
         shell: pwsh
         run: |
           vpk download github --repoUrl $env:REPO_URL --token $env:GH_TOKEN
-          vpk pack --packId ClaudeWidget --packVersion $env:VERSION --packDir publish --mainExe ClaudeWidget.exe --packTitle "Claude Code widget" --packAuthors DamianoCode
+          vpk pack --packId ClaudeWidget --packVersion $env:VERSION --packDir publish --mainExe ClaudeWidget.exe --packTitle "Claude Code widget" --packAuthors DamianoCode --icon src/ClaudeWidget/Assets/widget.ico
           vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN --publish --tag ${{ github.ref_name }} --releaseName "Claude Code widget $env:VERSION"

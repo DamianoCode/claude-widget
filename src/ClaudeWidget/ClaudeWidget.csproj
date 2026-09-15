@@ -8,6 +8,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ClaudeWidget</AssemblyName>
     <RootNamespace>ClaudeWidget</RootNamespace>
+    <!-- Ikona w Eksploratorze, menu Start i na skrótach; ikona w zasobniku rysuje się w kodzie (kolor stanu). -->
+    <ApplicationIcon>Assets\widget.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
