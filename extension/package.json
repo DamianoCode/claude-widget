@@ -3,7 +3,7 @@
   "displayName": "Claude Code widget bridge",
   "description": "Po kliknięciu sesji w widżecie Claude Code pokazuje terminal VS Code, w którym ona działa.",
   "publisher": "damianocode",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
