@@ -150,7 +150,8 @@ public partial class MainWindow : Window
         var nowMs = NowMs();
         _sessions = _aggregator.GetSessions(nowMs, _agentsSnapshot);
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
-        long? measuredAt = limits?.UpdatedAt;
+        // Bez czasu pomiaru (0 z pliku bez updatedAt) nie ma ani świeżości, ani prognozy tempa.
+        long? measuredAt = limits is { UpdatedAt: > 0 } ? limits.UpdatedAt : null;
         var fiveView = LimitCalculator.GetView(limits?.FiveHour, LimitWindowKind.FiveHour, measuredAt, nowMs, panel: false);
         var weekView = LimitCalculator.GetView(limits?.SevenDay, LimitWindowKind.SevenDay, measuredAt, nowMs, panel: false);
         var focus = _sessions.Count > 0 ? _sessions[0] : null;

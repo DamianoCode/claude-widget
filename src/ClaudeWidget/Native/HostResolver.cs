@@ -31,7 +31,9 @@ public sealed class HostResolver
 
     private Task<int> StartResolving(int claudePid)
     {
-        if (_cache.TryGetValue(claudePid, out var existing)) return existing;
+        // Nieudane zapytanie WMI (np. usługa jeszcze nie ruszyła) liczy się od nowa przy następnej
+        // okazji — inaczej kliknięcie tej sesji do końca jej życia nie przenosiłoby do terminala.
+        if (_cache.TryGetValue(claudePid, out var existing) && !existing.IsFaulted) return existing;
         var task = Task.Run(() => ResolveCore(claudePid));
         _cache[claudePid] = task;
         return task;
