@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Core wchodzi do hooka kompilowanego Native AOT, więc cały musi być bezpieczny dla AOT i trimmingu. -->
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClaudeWidget.Tests" />
+  </ItemGroup>
+
+</Project>

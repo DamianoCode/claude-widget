@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Ikona w zasobniku (NotifyIcon) jest z WinForms. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ClaudeWidget</AssemblyName>
+    <RootNamespace>ClaudeWidget</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms i WPF mają typy o tych samych nazwach (Application, Color...); domyślnie obowiązuje WPF. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClaudeWidget.Core\ClaudeWidget.Core.csproj" />
+  </ItemGroup>
+
+</Project>

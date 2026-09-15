@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ClaudeWidget.Core/ClaudeWidget.Core.csproj" />
+    <Project Path="src/ClaudeWidget.Hook/ClaudeWidget.Hook.csproj" />
+    <Project Path="src/ClaudeWidget/ClaudeWidget.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClaudeWidget.Tests/ClaudeWidget.Tests.csproj" />
+  </Folder>
+</Solution>
