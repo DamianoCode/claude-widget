@@ -9,6 +9,8 @@
          Native AOT startuje w ~30 ms i nie potrzebuje runtime .NET ani Node. -->
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Odczyt PID rodzica przez NtQueryInformationProcess wymaga wskaźnika ref-struct w P/Invoke. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
