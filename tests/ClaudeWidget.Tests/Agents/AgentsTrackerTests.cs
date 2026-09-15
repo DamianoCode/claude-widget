@@ -128,6 +128,32 @@ public sealed class AgentsTrackerTests
     }
 
     [Fact]
+    public void DescribeWaiting_stops_at_the_first_non_null_field_even_if_it_is_not_a_string()
+    {
+        // question is missing, message is null, description is a number — JS's `??` chain stops
+        // there (first non-nullish value) and never reaches `tool`, even though tool is a string.
+        var waitingFor = System.Text.Json.JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["message"] = null,
+            ["description"] = 5,
+            ["tool"] = "Bash",
+        });
+        Assert.Equal("", AgentsTracker.DescribeWaiting(waitingFor));
+    }
+
+    [Fact]
+    public void DescribeWaiting_falls_through_null_fields_to_the_next_one()
+    {
+        var waitingFor = System.Text.Json.JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["question"] = null,
+            ["message"] = null,
+            ["tool"] = "Bash",
+        });
+        Assert.Equal("Bash", AgentsTracker.DescribeWaiting(waitingFor));
+    }
+
+    [Fact]
     public void FindClaude_earlier_directory_wins()
     {
         var npm = "C:\\npm";

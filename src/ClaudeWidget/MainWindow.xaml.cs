@@ -82,10 +82,15 @@ public partial class MainWindow : Window
     private bool _pinned, _userHidden, _fullscreenHidden;
     private string _panelSignature = "";
     private string _lastError = "";
+    private readonly string[] _restartArgs;
 
-    public MainWindow(WidgetPaths paths)
+    // startupArgs jest tu tylko dla symetrii z App.Main — restart zawsze przekazuje własny,
+    // znormalizowany --state-dir (patrz niżej), więc niezależnie od tego, jak widżet wystartował,
+    // trafi po aktualizacji w ten sam katalog stanu.
+    public MainWindow(WidgetPaths paths, string[] startupArgs)
     {
         _paths = paths;
+        _restartArgs = ["--state-dir", _paths.StateDir];
         _aggregator = new SessionAggregator(_paths, new SystemProcessProbe());
         _aggregator.SessionClosed += _hostResolver.Forget;
 
@@ -244,11 +249,11 @@ public partial class MainWindow : Window
         _pWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
     }
 
-    private void OnSessionRowClicked(SessionInfo session)
+    private async void OnSessionRowClicked(SessionInfo session)
     {
-        Safely("przejście do terminala", () => ShowSessionTerminal(session));
+        await Safely2("przejście do terminala", () => ShowSessionTerminalAsync(session));
         ClosePanel();
-        UpdateView();
+        Safely("odświeżanie", UpdateView);
     }
 
     private bool _pulsing;
@@ -293,7 +298,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowSessionTerminal(SessionInfo session)
+    private async Task ShowSessionTerminalAsync(SessionInfo session)
     {
         SetSeen(session.Id);
         if (session.IsBackground)
@@ -302,7 +307,9 @@ public partial class MainWindow : Window
             return;
         }
         if (session.Pid == 0) return;
-        var hostPid = _hostResolver.Resolve(session.Pid);
+        // Zapytanie WMI o proces-hosta trwa czasem setki ms; idzie w tle, żeby klik albo skrót
+        // klawiszowy nie zamroziły okna.
+        var hostPid = await _hostResolver.ResolveAsync(session.Pid);
         if (hostPid == 0) return;
         var target = NativeMethods.FindWindowOf((uint)hostPid, session.Name);
         if (target == IntPtr.Zero) return;
@@ -357,7 +364,7 @@ public partial class MainWindow : Window
     }
 
     // Skrót klawiszowy: sesja, która najdłużej czeka na Ciebie; gdy żadna nie czeka — najnowszy wynik.
-    private void InvokeJump()
+    private async Task InvokeJumpAsync()
     {
         var waiting = _sessions.Where(s => s.Kind == SessionKinds.Waiting).OrderBy(s => s.Since).ToList();
         var target = waiting.Count > 0
@@ -365,7 +372,7 @@ public partial class MainWindow : Window
             : _sessions.Where(s => s.Kind == SessionKinds.New).OrderByDescending(s => s.Since).FirstOrDefault();
         if (target is not null)
         {
-            ShowSessionTerminal(target);
+            await ShowSessionTerminalAsync(target);
             UpdateView();
         }
     }
@@ -382,8 +389,10 @@ public partial class MainWindow : Window
         var title = NativeMethods.TitleOf(foreground);
         foreach (var session in fresh)
         {
-            var hostPid = _hostResolver.Resolve(session.Pid);
-            var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.Resolve(s.Pid) == hostPid);
+            // Zapytanie WMI liczy się w tle; dopóki wynik nie jest gotowy, sesja po prostu czeka
+            // do następnego tyknięcia timera zamiast blokować wątek UI co sekundę.
+            if (!_hostResolver.TryGetCached(session.Pid, out var hostPid)) continue;
+            var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var otherHost) && otherHost == hostPid);
             var looking = hostPid != 0 && hostPid == foregroundPid && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
             if (!looking) { _dwell.Remove(session.Id); continue; }
             if (!_dwell.TryGetValue(session.Id, out var since)) _dwell[session.Id] = nowMs;
@@ -580,26 +589,33 @@ public partial class MainWindow : Window
         _tray = new NotifyIcon();
         var trayMenu = new ContextMenuStrip();
         _trayShow = (ToolStripMenuItem)trayMenu.Items.Add("Ukryj widżet");
-        _trayShow.Click += (_, _) => { _userHidden = !_userHidden; UpdateVisibility(); };
+        _trayShow.Click += (_, _) => Safely("zasobnik: pokaż/ukryj", () => { _userHidden = !_userHidden; UpdateVisibility(); });
         _traySize = (ToolStripMenuItem)trayMenu.Items.Add("Widok pełny");
-        _traySize.Click += (_, _) => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SwitchSize(); };
+        _traySize.Click += (_, _) => Safely("zasobnik: rozmiar", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SwitchSize(); });
         var trayDock = (ToolStripMenuItem)trayMenu.Items.Add("Przyklej do prawej krawędzi");
-        trayDock.Click += (_, _) => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SetDefaultPosition(); SaveSettings(); };
+        trayDock.Click += (_, _) => Safely("zasobnik: dokowanie", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SetDefaultPosition(); SaveSettings(); });
         _trayAutostart = new ToolStripMenuItem("Uruchamiaj przy logowaniu") { Checked = AutostartService.IsEnabled() };
-        _trayAutostart.Click += (_, _) => SetAutostart(!_trayAutostart.Checked);
+        _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
         trayMenu.Items.Add(_trayAutostart);
         trayMenu.Items.Add(new ToolStripSeparator());
         _trayUpdateItem = new ToolStripMenuItem("Zaktualizuj i uruchom ponownie") { Visible = false };
-        _trayUpdateItem.Click += (_, _) => _updates.ApplyAndRestart();
+        _trayUpdateItem.Click += (_, _) => Safely("aktualizacja", () =>
+        {
+            // Bez tego ikona zostaje widoczna, aż stary proces zniknie — po restarcie wygląda jak duch.
+            _tray.Visible = false;
+            _tray.Dispose();
+            if (_trayIcon is not null) { TrayIconFactory.Destroy(_trayIcon); _trayIcon = null; }
+            _updates.ApplyAndRestart(_restartArgs);
+        });
         trayMenu.Items.Add(_trayUpdateItem);
         var trayClose = (ToolStripMenuItem)trayMenu.Items.Add("Zamknij widżet");
-        trayClose.Click += (_, _) => System.Windows.Application.Current.Dispatcher.Invoke(Close);
+        trayClose.Click += (_, _) => Safely("zasobnik: zamknij", () => System.Windows.Application.Current.Dispatcher.Invoke(Close));
         _tray.ContextMenuStrip = trayMenu;
         _tray.MouseClick += (_, e) =>
         {
             if (e.Button == System.Windows.Forms.MouseButtons.Left)
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(() => { _userHidden = !_userHidden; UpdateVisibility(); });
+                Safely("zasobnik: klik", () => System.Windows.Application.Current.Dispatcher.Invoke(() => { _userHidden = !_userHidden; UpdateVisibility(); }));
             }
         };
         _updates.UpdateReady += () => System.Windows.Application.Current.Dispatcher.Invoke(() =>
@@ -618,7 +634,9 @@ public partial class MainWindow : Window
             surface.MouseEnter += (_, _) => { _openTimer.Stop(); _openTimer.Start(); };
             surface.MouseLeave += (_, _) => _openTimer.Stop();
             // Przeciągnięcie przesuwa widżet; kliknięcie w miejscu przypina albo zamyka panel.
-            surface.MouseLeftButtonDown += (_, _) =>
+            // DragMove rzuca, gdy przycisk myszy puszczono tuż przed wywołaniem (WPF nie zdążył
+            // złapać MouseDown) — Safely zamiast wywalać widżet na pustym miejscu na pulpicie.
+            surface.MouseLeftButtonDown += (_, _) => Safely("przeciąganie", () =>
             {
                 _openTimer.Stop();
                 var startLeft = Left;
@@ -640,7 +658,7 @@ public partial class MainWindow : Window
                     _pinned = true;
                     PanelBody.BorderBrush = Brushes.Brush("#40FFFFFF");
                 }
-            };
+            });
         }
 
         _openTimer.Tick += (_, _) =>
@@ -707,10 +725,12 @@ public partial class MainWindow : Window
         try
         {
             var now = NowMs();
-            var snapshot = await AgentsRunner.RunAsync(
-                _agentsPrevious, now, File.Exists,
-                Environment.GetEnvironmentVariable("PATH"), Environment.GetEnvironmentVariable("PATHEXT"),
-                CancellationToken.None);
+            var previous = _agentsPrevious;
+            var path = Environment.GetEnvironmentVariable("PATH");
+            var pathExt = Environment.GetEnvironmentVariable("PATHEXT");
+            // FindClaude (pętla File.Exists po PATH) i Process.Start są synchroniczne — Task.Run,
+            // żeby nawet ten pierwszy kawałek nie ruszał się na wątku UI.
+            var snapshot = await Task.Run(() => AgentsRunner.RunAsync(previous, now, File.Exists, path, pathExt, CancellationToken.None));
             _agentsSnapshot = snapshot;
             _agentsPrevious = snapshot.Sessions;
         }
@@ -748,7 +768,7 @@ public partial class MainWindow : Window
             _hotkey = new GlobalHotkey(source, HotkeyModifiers, HotkeyKeyCode);
             if (_hotkey.Registered)
             {
-                _hotkey.Pressed += () => Safely("skrót", InvokeJump);
+                _hotkey.Pressed += async () => await Safely2("skrót", InvokeJumpAsync);
                 hint = $"Kliknij sesję, aby przejść do jej terminala; {HotkeyLabel} przenosi do tej, która czeka najdłużej. Kliknij sygnalizator, aby przypiąć panel.";
             }
             else
@@ -765,7 +785,7 @@ public partial class MainWindow : Window
         _tray.Visible = true;
         Safely("start", UpdateView);
         Safely("sprzątanie", () => _aggregator.CleanupOrphans());
-        StartWatcher();
+        Safely("obserwacja katalogu", StartWatcher);
         _refreshTimer.Start();
         _agentsTimer.Start();
         _cleanupTimer.Start();

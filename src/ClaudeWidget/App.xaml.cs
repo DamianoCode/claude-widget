@@ -22,12 +22,23 @@ public partial class App : Application
             .Run();
 
         var options = StartupOptions.Parse(args);
-        using var instance = SingleInstance.Acquire(options.StateDir);
+        var paths = new WidgetPaths(options.StateDir);
+        // Nazwa muteksu musi wyjść z pełnej, znormalizowanej ścieżki (WidgetPaths robi
+        // Path.GetFullPath) — inaczej dwa uruchomienia tego samego katalogu z inną pisownią
+        // (względna ścieżka, inna wielkość liter, końcowy ukośnik) dostałyby różne muteksy.
+        using var instance = SingleInstance.Acquire(paths.StateDir);
         if (instance is null) return; // druga instancja na ten sam katalog stanu — po prostu kończymy
 
         var app = new App();
         app.InitializeComponent();
-        var window = new MainWindow(new WidgetPaths(options.StateDir));
+        // "okno: $_" w widget.ps1 łapało wszystko dookoła Dispatcher.Run(); to samo tutaj —
+        // nieobsłużony wyjątek z dowolnego handlera UI ląduje w logu zamiast wywalać widżet.
+        app.DispatcherUnhandledException += (_, e) =>
+        {
+            WidgetLog.Write(paths, $"okno: {e.Exception}");
+            e.Handled = true;
+        };
+        var window = new MainWindow(paths, args);
         app.MainWindow = window;
         window.Show();
         app.Run();

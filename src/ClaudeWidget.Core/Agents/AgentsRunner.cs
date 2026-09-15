@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 namespace ClaudeWidget.Core.Agents;
@@ -48,10 +49,18 @@ public static class AgentsRunner
 
         using var timeoutSource = new CancellationTokenSource(Timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-        string stdout;
+        string stdout, stderr;
         try
         {
-            stdout = await process.StandardOutput.ReadToEndAsync(linked.Token).ConfigureAwait(false);
+            // Czyta stdout i stderr równocześnie: gdy dziecko zapisze więcej niż bufor potoku
+            // (ok. 4 KB) na stderr, a nikt go jeszcze nie czyta, proces blokuje się w pół zapisu —
+            // sekwencyjne czekanie na stdout, a potem na stderr, zawiesiłoby każdy taki przebieg
+            // aż do limitu czasu.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(linked.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(linked.Token);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            stdout = stdoutTask.Result;
+            stderr = stderrTask.Result;
             await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -62,20 +71,17 @@ public static class AgentsRunner
 
         if (process.ExitCode != 0)
         {
-            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException($"claude agents: kod {process.ExitCode} {stderr.Trim()}");
         }
 
-        List<AgentEntry>? entries;
         try
         {
-            entries = JsonSerializer.Deserialize(stdout, AgentsJson.Default.ListAgentEntry);
+            return AgentEntry.ParseListing(stdout);
         }
         catch (JsonException error)
         {
             throw new InvalidOperationException("claude agents --json nie zwrócił listy sesji", error);
         }
-        return entries ?? throw new InvalidOperationException("claude agents --json nie zwrócił listy sesji");
     }
 
     // claude.exe rusza bez powłoki. claude.cmd z npm uruchomi tylko cmd.exe — wtedy całe polecenie
@@ -105,6 +111,10 @@ public static class AgentsRunner
         }
         info.RedirectStandardOutput = true;
         info.RedirectStandardError = true;
+        // W WinExe (bez konsoli) .NET domyślnie dekoduje potoki dziecka stroną kodową ANSI —
+        // polskie litery w nazwie sesji/cwd/waitingFor wychodzą jako krzaki. claude drukuje UTF-8.
+        info.StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        info.StandardErrorEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         info.UseShellExecute = false;
         info.CreateNoWindow = true;
         return info;

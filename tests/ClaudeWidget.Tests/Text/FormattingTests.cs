@@ -36,8 +36,23 @@ public sealed class FormattingTests
     [InlineData(1500, "2 tys.")]
     [InlineData(150000, "150 tys.")]
     [InlineData(1_000_000, "1 mln")]
-    [InlineData(1_200_000, "1.2 mln")]
+    [InlineData(1_200_000, "1,2 mln")]
     public void FormatTokens_rounds_appropriately(double tokens, string expected) => Assert.Equal(expected, Formatting.FormatTokens(tokens));
+
+    [Fact]
+    public void FormatTokens_uses_polish_decimal_separator_regardless_of_thread_culture()
+    {
+        var previous = System.Threading.Thread.CurrentThread.CurrentCulture;
+        try
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            Assert.Equal("1,2 mln", Formatting.FormatTokens(1_200_000));
+        }
+        finally
+        {
+            System.Threading.Thread.CurrentThread.CurrentCulture = previous;
+        }
+    }
 
     [Fact]
     public void GetWaitSpan_shows_under_a_minute_as_placeholder()
@@ -48,6 +63,14 @@ public sealed class FormattingTests
 
     [Fact]
     public void GetFreshnessText_without_data_says_so() => Assert.Equal("brak danych o limitach", Formatting.GetFreshnessText(null));
+
+    [Fact]
+    public void GetFreshnessText_zero_timestamp_also_says_no_data()
+    {
+        // AccountLimits.UpdatedAt is a non-nullable long defaulting to 0 when limits.json has no
+        // updatedAt field — that must read as "no data", not as an epoch-1970 timestamp.
+        Assert.Equal("brak danych o limitach", Formatting.GetFreshnessText(0));
+    }
 
     [Fact]
     public void GetFreshnessText_today_shows_time_only()

@@ -8,6 +8,10 @@ namespace ClaudeWidget.Core.Text;
 /// </summary>
 public static class Formatting
 {
+    // Znajomi widżetu mogą mieć angielski Windows, ale interfejs jest po polsku — liczby (np.
+    // "1,2 mln" z przecinkiem) nie mogą zależeć od tego, jaki jest bieżący/systemowy locale.
+    private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("pl-PL");
+
     private static readonly string[] Days = ["nd", "pn", "wt", "śr", "czw", "pt", "sob"];
 
     /// <summary>Odstęp czasu po polsku: sekundy, minuty, godziny (z minutami) albo dni.</summary>
@@ -46,33 +50,34 @@ public static class Formatting
         {
             var millions = Math.Round(tokens / 1_000_000, 1, MidpointRounding.AwayFromZero);
             var text = millions == Math.Floor(millions)
-                ? millions.ToString("0", CultureInfo.InvariantCulture)
-                : millions.ToString("0.#", CultureInfo.InvariantCulture);
+                ? millions.ToString("0", Culture)
+                : millions.ToString("0.#", Culture);
             return $"{text} mln";
         }
-        return $"{Math.Round(tokens / 1000, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture)} tys.";
+        return $"{Math.Round(tokens / 1000, MidpointRounding.AwayFromZero).ToString("0", Culture)} tys.";
     }
 
     public static DateTime GetLocalTime(double ms) => DateTimeOffset.FromUnixTimeMilliseconds((long)ms).LocalDateTime;
 
     /// <summary>Data bez roku: "dd.MM", jak w opisie resetu limitu tygodniowego.</summary>
-    public static string FormatDate(double ms) => GetLocalTime(ms).ToString("dd.MM", CultureInfo.InvariantCulture);
+    public static string FormatDate(double ms) => GetLocalTime(ms).ToString("dd.MM", Culture);
 
     /// <summary>Chwila w czasie lokalnym: "HH:mm", a z dniem tygodnia — "wt HH:mm".</summary>
     public static string FormatMoment(double ms, bool withDay)
     {
         var at = GetLocalTime(ms);
-        return withDay ? $"{Days[(int)at.DayOfWeek]} {at:HH:mm}" : at.ToString("HH:mm", CultureInfo.InvariantCulture);
+        return withDay ? $"{Days[(int)at.DayOfWeek]} {at.ToString("HH:mm", Culture)}" : at.ToString("HH:mm", Culture);
     }
 
-    /// <summary>"stan z HH:mm" dzisiaj, a starszy odczyt — z datą.</summary>
+    /// <summary>"stan z HH:mm" dzisiaj, a starszy odczyt — z datą. Brak znacznika czasu (0 albo null,
+    /// tak wygląda plik limits.json bez pola updatedAt) — jak w widget.ps1, "brak danych".</summary>
     public static string GetFreshnessText(long? updatedAt)
     {
-        if (updatedAt is not long ms) return "brak danych o limitach";
+        if (updatedAt is not long ms || ms <= 0) return "brak danych o limitach";
         var at = GetLocalTime(ms);
         return at.Date == DateTime.Now.Date
-            ? $"stan z {at:HH:mm}"
-            : $"stan z {at.ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)}";
+            ? $"stan z {at.ToString("HH:mm", Culture)}"
+            : $"stan z {at.ToString("dd.MM HH:mm", Culture)}";
     }
 
     /// <summary>

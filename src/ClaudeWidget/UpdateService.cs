@@ -52,8 +52,12 @@ public sealed class UpdateService
         }
     }
 
-    public void ApplyAndRestart()
+    /// <summary>
+    /// <paramref name="restartArgs"/> — argumenty startowe (np. <c>--state-dir</c>), żeby widżet po
+    /// restarcie otworzył się na tym samym katalogu stanu, niezależnie od tego, jak go uruchomiono.
+    /// </summary>
+    public void ApplyAndRestart(string[] restartArgs)
     {
-        if (_pendingUpdate is not null) _manager.ApplyUpdatesAndRestart(_pendingUpdate, []);
+        if (_pendingUpdate is not null) _manager.ApplyUpdatesAndRestart(_pendingUpdate, restartArgs);
     }
 }

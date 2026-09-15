@@ -76,14 +76,20 @@ public static partial class AgentsTracker
         if (waitingFor is { ValueKind: JsonValueKind.String } stringValue) text = stringValue.GetString();
         else if (waitingFor is { ValueKind: JsonValueKind.Object } objectValue)
         {
+            // JS: `waitingFor.question ?? waitingFor.message ?? ... ?? waitingFor.type` stops at the
+            // first field that isn't null/undefined, whatever its type — then checks if THAT one is
+            // a string. A non-string first hit (e.g. a numeric `tool`) does not fall through to the
+            // next field; it just leaves text unset.
+            JsonElement? candidate = null;
             foreach (var field in new[] { "question", "message", "description", "tool", "type" })
             {
-                if (objectValue.TryGetProperty(field, out var candidate) && candidate.ValueKind == JsonValueKind.String)
+                if (objectValue.TryGetProperty(field, out var value) && value.ValueKind != JsonValueKind.Null)
                 {
-                    text = candidate.GetString();
+                    candidate = value;
                     break;
                 }
             }
+            if (candidate is { ValueKind: JsonValueKind.String } stringCandidate) text = stringCandidate.GetString();
         }
         if (string.IsNullOrWhiteSpace(text)) return "";
         var trimmed = text.Trim();
