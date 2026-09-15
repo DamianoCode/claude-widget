@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace ClaudeWidget;
 
-/// <summary>widget-config.json: pozycja i rozmiar okna. Pisze i czyta wyłącznie widżet.</summary>
+/// <summary>widget-config.json: pozycja i rozmiar okna, dźwięki i powiadomienia. Pisze i czyta wyłącznie widżet.</summary>
 public sealed record WidgetConfig
 {
     public double? Left { get; init; }
@@ -12,6 +12,12 @@ public sealed record WidgetConfig
     public double? Top { get; init; }
 
     public string? Size { get; init; }
+
+    /// <summary>Dźwięk, gdy sesja czeka albo ma nowy wynik; brak wpisu = włączone.</summary>
+    public bool? Sounds { get; init; }
+
+    /// <summary>Powiadomienie Windows w tych samych chwilach; brak wpisu = włączone.</summary>
+    public bool? Notifications { get; init; }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

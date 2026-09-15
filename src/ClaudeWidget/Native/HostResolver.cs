@@ -6,8 +6,10 @@ namespace ClaudeWidget.Native;
 /// <summary>
 /// Proces z oknem, w którym działa sesja, i łańcuch procesów od claude.exe do niego (np. claude →
 /// pwsh → terminale VS Code → VS Code). Po łańcuchu rozszerzenie VS Code rozpoznaje terminal sesji.
+/// <see cref="Window"/> — dokładne okno terminala z konsoli sesji (<see cref="NativeMethods.ConsoleOwnerWindow"/>)
+/// albo zero, gdy się go nie da ustalić.
 /// </summary>
-public sealed record HostInfo(int HostPid, IReadOnlyList<int> Chain)
+public sealed record HostInfo(int HostPid, IReadOnlyList<int> Chain, IntPtr Window = default)
 {
     public static readonly HostInfo None = new(0, []);
 }
@@ -53,6 +55,7 @@ public sealed class HostResolver
 
     private static HostInfo ResolveCore(int claudePid)
     {
+        var window = NativeMethods.ConsoleOwnerWindow(claudePid);
         var chain = new List<int>();
         var id = claudePid;
         for (var depth = 0; depth < 6 && id != 0; depth++)
@@ -66,10 +69,10 @@ public sealed class HostResolver
             if (name.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) break;
 
             chain.Add(id);
-            if (HasWindow(id)) return new HostInfo(id, chain);
+            if (HasWindow(id)) return new HostInfo(id, chain, window);
             id = Convert.ToInt32(process["ParentProcessId"]);
         }
-        return new HostInfo(0, chain);
+        return new HostInfo(0, chain, window);
     }
 
     private static bool HasWindow(int pid)

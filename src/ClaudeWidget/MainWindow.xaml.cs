@@ -51,6 +51,10 @@ public partial class MainWindow : Window
     private readonly SessionAggregator _aggregator;
     private readonly HostResolver _hostResolver = new();
     private readonly VsCodeBridge _vsCode;
+    private readonly AlertPlanner _alerts = new();
+    private readonly SessionNotifier _notifier;
+    private MenuItem _soundsItem = null!, _notificationsItem = null!;
+    private ToolStripMenuItem _traySounds = null!, _trayNotifications = null!;
     private readonly UpdateService _updates = new();
     private readonly Dictionary<string, RadialGradientBrush> _litFill = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _fullGlow = [];
@@ -96,6 +100,7 @@ public partial class MainWindow : Window
         _aggregator = new SessionAggregator(_paths, new SystemProcessProbe());
         _aggregator.SessionClosed += _hostResolver.Forget;
         _vsCode = VsCodeBridge.For(_paths, IsProcessAlive);
+        _notifier = new SessionNotifier(_paths, _updates.IsInstalled, message => WidgetLog.Write(_paths, message), OnNotificationActivated);
 
         InitializeComponent();
         BuildPalette();
@@ -152,6 +157,7 @@ public partial class MainWindow : Window
     {
         var nowMs = NowMs();
         _sessions = _aggregator.GetSessions(nowMs, _agentsSnapshot);
+        AnnounceChanges(nowMs);
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
         // Bez czasu pomiaru (0 z pliku bez updatedAt) nie ma ani świeżości, ani prognozy tempa.
         long? measuredAt = limits is { UpdatedAt: > 0 } ? limits.UpdatedAt : null;
@@ -314,11 +320,16 @@ public partial class MainWindow : Window
         // Zapytanie WMI o proces-hosta trwa czasem setki ms; idzie w tle, żeby klik albo skrót
         // klawiszowy nie zamroziły okna.
         var host = await _hostResolver.ResolveAsync(session.Pid);
-        if (host.HostPid == 0) return;
+        // Okno konsoli sesji wskazuje dokładnie okno terminala — także zminimalizowane i przy kilku
+        // oknach jednego Windows Terminal, gdzie tytuł mówi tylko o aktywnej karcie. Liczy się je od
+        // nowa przy każdym kliknięciu, bo kartę da się przenieść do innego okna.
+        var consoleWindow = await Task.Run(() => NativeMethods.ConsoleOwnerWindow(session.Pid));
         // Terminal w VS Code: okno z tym terminalem zna rozszerzenie-most — jego folder idzie na
         // początek wskazówek, a po wyciągnięciu okna rozszerzenie samo przełącza na terminal sesji.
         var bridgeWindow = VsCodeBridge.OwnerOf(_vsCode.ReadWindows(), host.Chain);
-        var target = NativeMethods.FindWindowOf((uint)host.HostPid, TitleHints(session, host.HostPid, bridgeWindow));
+        var target = consoleWindow != IntPtr.Zero ? consoleWindow
+            : host.HostPid != 0 ? NativeMethods.FindWindowOf((uint)host.HostPid, TitleHints(session, host.HostPid, bridgeWindow))
+            : IntPtr.Zero;
         if (target == IntPtr.Zero) return;
         if (NativeMethods.IsIconic(target)) NativeMethods.ShowWindow(target, NativeMethods.SwRestore);
         NativeMethods.SetForegroundWindow(target);
@@ -414,30 +425,13 @@ public partial class MainWindow : Window
         var fresh = _sessions.Where(s => s.Kind == SessionKinds.New && s.Pid != 0).ToList();
         if (fresh.Count == 0) { _dwell.Clear(); return; }
 
-        var foreground = NativeMethods.GetForegroundWindow();
-        var foregroundPid = (int)NativeMethods.ProcessOf(foreground);
-        var title = NativeMethods.TitleOf(foreground);
+        var foreground = ForegroundNow();
         var bridgeWindows = _vsCode.ReadWindows();
         foreach (var session in fresh)
         {
             // Zapytanie WMI liczy się w tle; dopóki wynik nie jest gotowy, sesja po prostu czeka
             // do następnego tyknięcia timera zamiast blokować wątek UI co sekundę.
-            if (!_hostResolver.TryGetCached(session.Pid, out var host)) continue;
-            var hostPid = host.HostPid;
-            bool looking;
-            if (VsCodeBridge.OwnerOf(bridgeWindows, host.Chain) is { } bridgeWindow)
-            {
-                // Rozszerzenie wie, który terminal jest aktywny w oknie z fokusem — pewniejsze niż tytuł.
-                looking = hostPid == foregroundPid && VsCodeBridge.IsLookingAt(bridgeWindow, host.Chain);
-            }
-            else
-            {
-                var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.HostPid == hostPid);
-                // Bez rozszerzenia rozstrzyga sama nazwa sesji w tytule: nazwa projektu czy folderu jako
-                // fragment pasowałaby też do tytułów innych kart (np. „api”) i gasiła nieprzejrzane wyniki.
-                looking = hostPid != 0 && hostPid == foregroundPid
-                    && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
-            }
+            if (IsLookingAt(session, foreground, bridgeWindows) is not bool looking) continue;
             if (!looking) { _dwell.Remove(session.Id); continue; }
             if (!_dwell.TryGetValue(session.Id, out var since)) _dwell[session.Id] = nowMs;
             else if (nowMs - since >= SeenAfterMs)
@@ -446,6 +440,85 @@ public partial class MainWindow : Window
                 _dwell.Remove(session.Id);
             }
         }
+    }
+
+    private readonly record struct ForegroundWindow(IntPtr Hwnd, int Pid, string Title);
+
+    private static ForegroundWindow ForegroundNow()
+    {
+        var hwnd = NativeMethods.GetForegroundWindow();
+        return new ForegroundWindow(hwnd, (int)NativeMethods.ProcessOf(hwnd), NativeMethods.TitleOf(hwnd));
+    }
+
+    // Czy patrzysz na sesję: jej okno jest na pierwszym planie, a w nim — gdy wiadomo — jej terminal.
+    // null, dopóki nie wiadomo, gdzie jest okno sesji (zapytanie WMI liczy się w tle).
+    private bool? IsLookingAt(SessionInfo session, ForegroundWindow foreground, IReadOnlyList<VsCodeWindow> bridgeWindows)
+    {
+        if (session.Pid == 0) return false;
+        if (!_hostResolver.TryGetCached(session.Pid, out var host)) return null;
+        var hostPid = host.HostPid;
+        if (VsCodeBridge.OwnerOf(bridgeWindows, host.Chain) is { } bridgeWindow)
+        {
+            // Rozszerzenie wie, który terminal jest aktywny w oknie z fokusem — pewniejsze niż tytuł.
+            return hostPid == foreground.Pid && VsCodeBridge.IsLookingAt(bridgeWindow, host.Chain);
+        }
+        if (host.Window != IntPtr.Zero)
+        {
+            // Dokładne okno terminala z konsoli sesji; nazwa w tytule rozstrzyga już tylko wtedy, gdy
+            // w tym jednym oknie jest kilka sesji w kartach.
+            if (foreground.Hwnd != host.Window) return false;
+            var inWindow = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.Window == host.Window);
+            return inWindow == 1 || (session.Name.Length > 0 && foreground.Title.Contains(session.Name, StringComparison.Ordinal));
+        }
+        var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.HostPid == hostPid);
+        // Bez rozszerzenia rozstrzyga sama nazwa sesji w tytule: nazwa projektu czy folderu jako
+        // fragment pasowałaby też do tytułów innych kart (np. „api”) i gasiła nieprzejrzane wyniki.
+        return hostPid != 0 && hostPid == foreground.Pid
+            && (sharing == 1 || (session.Name.Length > 0 && foreground.Title.Contains(session.Name, StringComparison.Ordinal)));
+    }
+
+    // --- dźwięki i powiadomienia -----------------------------------------------------------------
+
+    // Dźwięk i powiadomienie, gdy sesja zaczyna czekać albo kończy z nowym wynikiem — chyba że właśnie
+    // na nią patrzysz. Nieaktualne powiadomienia (sesja ruszyła dalej, wynik przejrzany) znikają.
+    private void AnnounceChanges(long nowMs)
+    {
+        // Okno sesji szuka się zawczasu (w tle), żeby przy pierwszej prośbie o zgodę było już wiadomo,
+        // czy patrzysz na jej terminal.
+        foreach (var session in _sessions)
+        {
+            if (session.Pid != 0) _hostResolver.TryGetCached(session.Pid, out _);
+        }
+        var changes = _alerts.Next(_sessions, nowMs, SessionAggregator.IsUsable(_agentsSnapshot, nowMs));
+        foreach (var id in changes.Cleared) _notifier.Clear(id);
+        if (changes.Raised.Count == 0) return;
+        var foreground = ForegroundNow();
+        var bridgeWindows = _vsCode.ReadWindows();
+        foreach (var alert in changes.Raised)
+        {
+            if (IsLookingAt(alert.Session, foreground, bridgeWindows) == true) continue;
+            if (_notifier.Raise(alert)) _alerts.MarkSounded(alert, nowMs);
+        }
+    }
+
+    // Kliknięcie w powiadomienie przychodzi z wątku Windows — przejście do sesji robi się na wątku okna.
+    private void OnNotificationActivated(string sessionId) =>
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+            if (session is null) return;
+            await Safely2("powiadomienie: przejście do sesji", () => ShowSessionTerminalAsync(session));
+            UpdateView();
+        });
+
+    private void SetAlertOptions(bool sounds, bool notifications, bool save = true)
+    {
+        _notifier.SoundsEnabled = sounds;
+        _notifier.NotificationsEnabled = notifications;
+        if (!notifications) _notifier.ClearAll();
+        _soundsItem.IsChecked = _traySounds.Checked = sounds;
+        _notificationsItem.IsChecked = _trayNotifications.Checked = notifications;
+        if (save) SaveSettings();
     }
 
     // --- zasobnik systemowy ---------------------------------------------------------------------
@@ -524,7 +597,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            WidgetConfigStore.Write(_paths.ConfigFile, new WidgetConfig { Left = Left, Top = Top, Size = _size });
+            WidgetConfigStore.Write(_paths.ConfigFile, new WidgetConfig
+            {
+                Left = Left,
+                Top = Top,
+                Size = _size,
+                Sounds = _notifier.SoundsEnabled,
+                Notifications = _notifier.NotificationsEnabled,
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -537,6 +617,7 @@ public partial class MainWindow : Window
         var config = WidgetConfigStore.Read(_paths.ConfigFile);
         var size = config?.Size is "mini" or "full" ? config.Size : "mini";
         SetSize(size, false);
+        SetAlertOptions(config?.Sounds ?? true, config?.Notifications ?? true, save: false);
 
         // Zapisana pozycja może wskazywać na odłączony monitor — wtedy wraca domyślna.
         var left = SystemParameters.VirtualScreenLeft;
@@ -627,7 +708,16 @@ public partial class MainWindow : Window
         hideItem.Click += (_, _) => { _userHidden = true; UpdateVisibility(); };
         var closeItem = new MenuItem { Header = "Zamknij widżet" };
         closeItem.Click += (_, _) => Close();
-        foreach (var item in new[] { _sizeItem, dockItem, hideItem, closeItem }) menu.Items.Add(item);
+        // IsCheckable przełącza znaczek sam, zanim przyjdzie Click — stąd odczyt IsChecked.
+        _soundsItem = new MenuItem { Header = "Dźwięki", IsCheckable = true };
+        _soundsItem.Click += (_, _) => Safely("dźwięki", () => SetAlertOptions(_soundsItem.IsChecked, _notifier.NotificationsEnabled));
+        _notificationsItem = new MenuItem { Header = "Powiadomienia Windows", IsCheckable = true };
+        _notificationsItem.Click += (_, _) => Safely("powiadomienia", () => SetAlertOptions(_notifier.SoundsEnabled, _notificationsItem.IsChecked));
+        menu.Items.Add(_sizeItem);
+        menu.Items.Add(_soundsItem);
+        menu.Items.Add(_notificationsItem);
+        menu.Items.Add(new Separator());
+        foreach (var item in new[] { dockItem, hideItem, closeItem }) menu.Items.Add(item);
         foreach (var surface in new[] { Card, Mini }) surface.ContextMenu = menu;
 
         _tray = new NotifyIcon();
@@ -641,6 +731,12 @@ public partial class MainWindow : Window
         _trayAutostart = new ToolStripMenuItem("Uruchamiaj przy logowaniu") { Checked = AutostartService.IsEnabled() };
         _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
         trayMenu.Items.Add(_trayAutostart);
+        _traySounds = new ToolStripMenuItem("Dźwięki");
+        _traySounds.Click += (_, _) => Safely("zasobnik: dźwięki", () => SetAlertOptions(!_notifier.SoundsEnabled, _notifier.NotificationsEnabled));
+        trayMenu.Items.Add(_traySounds);
+        _trayNotifications = new ToolStripMenuItem("Powiadomienia Windows");
+        _trayNotifications.Click += (_, _) => Safely("zasobnik: powiadomienia", () => SetAlertOptions(_notifier.SoundsEnabled, !_notifier.NotificationsEnabled));
+        trayMenu.Items.Add(_trayNotifications);
         trayMenu.Items.Add(new ToolStripSeparator());
         _trayUpdateItem = new ToolStripMenuItem("Zaktualizuj i uruchom ponownie") { Visible = false };
         _trayUpdateItem.Click += (_, _) => Safely("aktualizacja", () =>
@@ -649,6 +745,7 @@ public partial class MainWindow : Window
             _tray.Visible = false;
             _tray.Dispose();
             if (_trayIcon is not null) { TrayIconFactory.Destroy(_trayIcon); _trayIcon = null; }
+            _notifier.ClearAll(); // OnClosed nie przyjdzie — proces kończy się od razu
             _updates.ApplyAndRestart(_restartArgs);
         });
         trayMenu.Items.Add(_trayUpdateItem);
@@ -704,6 +801,10 @@ public partial class MainWindow : Window
                 }
             });
         }
+
+        // Przyciski obsługują wciśnięcie myszy same, więc karta nie zaczyna przy nich przeciągania.
+        MinimizeButton.Click += (_, _) => Safely("zmniejszanie", SwitchSize);
+        ExpandButton.Click += (_, _) => Safely("rozwijanie", SwitchSize);
 
         _openTimer.Tick += (_, _) =>
         {
@@ -844,6 +945,7 @@ public partial class MainWindow : Window
         _cleanupTimer.Stop();
         _watcher?.Dispose();
         _hotkey?.Dispose();
+        _notifier.ClearAll();
         _tray.Visible = false;
         _tray.Dispose();
         if (_trayIcon is not null) TrayIconFactory.Destroy(_trayIcon);

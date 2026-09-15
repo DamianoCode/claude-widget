@@ -58,7 +58,8 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 | kliknięcie sesji w panelu | przenosi do okna jej terminala i oznacza wynik jako przejrzany |
 | **Ctrl+Alt+K** | przenosi do sesji, która najdłużej czeka na Ciebie (a gdy żadna — do najnowszego wyniku) |
 | przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej |
-| prawy przycisk | widok mini / pełny, przyklejenie do krawędzi, ukrycie, zamknięcie |
+| „–” w rogu karty / „˅” pod światłami w mini | zmniejsza do widoku mini / rozwija do pełnego (widać je po najechaniu) |
+| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, przyklejenie do krawędzi, ukrycie, zamknięcie |
 | ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też autostart i aktualizację |
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu
@@ -66,6 +67,17 @@ albo przez około 3 s patrzysz na jej okno terminala. Widżet chowa się sam, gd
 działa coś na pełnym ekranie (prezentacja, film).
 
 Ctrl+Alt+C byłoby naturalniejsze, ale na polskiej klawiaturze to AltGr+C, czyli „ć”.
+
+### Dźwięki i powiadomienia
+
+Gdy sesja zaczyna czekać na Ciebie albo kończy z nowym wynikiem, widżet gra dźwięk (dwa różne)
+i pokazuje powiadomienie Windows z nazwą sesji. Kliknięcie w powiadomienie przenosi do sesji,
+a samo powiadomienie znika, gdy sesja przestaje czekać albo przejrzysz wynik. Gdy właśnie patrzysz
+na terminal tej sesji, widżet milczy. Seria próśb o zgodę w jednej sesji gra najwyżej raz na 15 s.
+
+Oba włącza się i wyłącza w menu pod prawym przyciskiem albo w menu ikony w zasobniku
+(„Dźwięki”, „Powiadomienia Windows”). Własne dźwięki: pliki `need.wav` (czeka) i `done.wav`
+(nowy wynik) w `~\.claude\widget\sounds` zastępują wbudowane.
 
 ### Sesje w terminalu VS Code
 

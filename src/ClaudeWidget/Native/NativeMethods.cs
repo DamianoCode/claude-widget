@@ -135,4 +135,53 @@ internal static class NativeMethods
         }
         return windows[0].Hwnd;
     }
+
+    private const uint GaRootOwner = 3;
+    private static readonly object ConsoleLock = new();
+    private static bool _ignoringCtrlC;
+
+    [DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(uint pid);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    /// <summary>
+    /// Okno terminala, w którym działa proces konsolowy: okno jego konsoli, a w Windows Terminal
+    /// (ConPTY) — okno, do którego należy ukryte okno pseudokonsoli. Dokładne także wtedy, gdy jeden
+    /// proces Windows Terminal ma kilka okien (tytuł okna to tylko aktywna karta) i gdy okno jest
+    /// zminimalizowane. Zero, gdy się nie da: brak konsoli lub uprawnień, okno niewidoczne.
+    /// </summary>
+    public static IntPtr ConsoleOwnerWindow(int pid)
+    {
+        // Proces może mieć jedną konsolę naraz — podłączenia idą po kolei.
+        lock (ConsoleLock)
+        {
+            // Podłączona konsola przekazuje procesowi swoje Ctrl+C; bez tego wciśnięte akurat w tamtym
+            // terminalu zamknęłoby widżet.
+            if (!_ignoringCtrlC) _ignoringCtrlC = SetConsoleCtrlHandler(IntPtr.Zero, true);
+            FreeConsole();
+            if (!AttachConsole((uint)pid)) return IntPtr.Zero;
+            try
+            {
+                var console = GetConsoleWindow();
+                if (console == IntPtr.Zero) return IntPtr.Zero;
+                var root = GetAncestor(console, GaRootOwner);
+                return root != IntPtr.Zero && IsWindowVisible(root) ? root : IntPtr.Zero;
+            }
+            finally
+            {
+                FreeConsole();
+            }
+        }
+    }
 }
