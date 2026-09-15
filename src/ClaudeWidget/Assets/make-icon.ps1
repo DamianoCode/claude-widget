@@ -1,7 +1,8 @@
-# Uruchom w PowerShell 7: pwsh src/ClaudeWidget/Assets/make-icon.ps1 -IcoPath src/ClaudeWidget/Assets/widget.ico -PreviewPath preview.png
+# Uruchom w PowerShell 7: pwsh src/ClaudeWidget/Assets/make-icon.ps1 -IcoPath src/ClaudeWidget/Assets/widget.ico -PreviewPath preview.png -PngPath extension/icon.png
 # Ikona widżetu: sygnalizator z trzema światłami w stylistyce karty widżetu.
 # Każdy rozmiar rysowany osobno — małe (16–32 px) w uproszczeniu, żeby nie były rozmyte.
-param([Parameter(Mandatory)][string]$IcoPath, [Parameter(Mandatory)][string]$PreviewPath)
+#   -PngPath  ta sama ikona 256 px jako PNG (ikona rozszerzenia VS Code — to nie przyjmuje .ico ani SVG)
+param([Parameter(Mandatory)][string]$IcoPath, [Parameter(Mandatory)][string]$PreviewPath, [string]$PngPath = '')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
@@ -108,6 +109,10 @@ foreach ($img in $images) { $w.Write($img.Bytes) }
 $w.Flush()
 New-Item -ItemType Directory -Force (Split-Path $IcoPath) | Out-Null
 [IO.File]::WriteAllBytes($IcoPath, $out.ToArray())
+if ($PngPath) {
+    New-Item -ItemType Directory -Force (Split-Path $PngPath) | Out-Null
+    $images[-1].Bitmap.Save($PngPath, [System.Drawing.Imaging.ImageFormat]::Png)
+}
 
 # Podgląd: 256 px oraz wszystkie rozmiary w skali 1:1 na jasnym i ciemnym tle (jak w Eksploratorze).
 $preview = [System.Drawing.Bitmap]::new(900, 560)

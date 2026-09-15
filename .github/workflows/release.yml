@@ -44,9 +44,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet test ClaudeWidget.slnx -c Release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: VS Code extension
+        working-directory: extension
+        run: |
+          npm ci
+          npm test
+          npm run package
       - name: Publish widget and hook
         shell: pwsh
         run: |
+          # Rozszerzenie VS Code jedzie w paczce; widżet instaluje je sam przy starcie.
+          New-Item -ItemType Directory -Force publish | Out-Null
+          Copy-Item extension/ClaudeWidgetBridge.vsix publish/
           # Widżet z własnym runtime .NET — na komputerze znajomego nie trzeba niczego doinstalowywać.
           dotnet publish src/ClaudeWidget -c Release -r win-x64 --self-contained -p:Version=$env:VERSION -o publish
           # Hook Native AOT obok widżetu: settings.json wskazuje na current\ClaudeWidgetHook.exe.

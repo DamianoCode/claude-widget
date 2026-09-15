@@ -14,7 +14,9 @@ public sealed class WidgetPaths
 
     public WidgetPaths(string stateDir)
     {
-        StateDir = Path.GetFullPath(stateDir);
+        // Bez końcowego ukośnika: katalog nadrzędny (widżetu) musi wyjść ten sam, który liczy
+        // rozszerzenie VS Code, a nazwa muteksu — ta sama dla każdej pisowni ścieżki.
+        StateDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(stateDir));
     }
 
     /// <summary>Katalog stanu z CLAUDE_WIDGET_STATE_DIR, a domyślnie ~/.claude/widget/state.</summary>

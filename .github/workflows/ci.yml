@@ -17,3 +17,12 @@ jobs:
       - run: dotnet test ClaudeWidget.slnx -c Release --no-build
       - name: Hook compiles with Native AOT
         run: dotnet publish src/ClaudeWidget.Hook -c Release -r win-x64 -o publish-hook
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: VS Code extension builds, passes tests and packages
+        working-directory: extension
+        run: |
+          npm ci
+          npm test
+          npm run package

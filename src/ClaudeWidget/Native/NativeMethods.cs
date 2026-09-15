@@ -110,25 +110,29 @@ internal static class NativeMethods
             && rect.Right >= info.Monitor.Right && rect.Bottom >= info.Monitor.Bottom;
     }
 
-    // Widoczne okno procesu, najlepiej to, którego tytuł zawiera podany tekst (nazwę sesji);
-    // proces terminala może mieć kilka okien.
-    public static IntPtr FindWindowOf(uint pid, string titlePart)
+    // Widoczne okno procesu. Terminal albo IDE bywa właścicielem kilku okien (VS Code trzyma wszystkie
+    // w jednym procesie), więc wygrywa okno z tytułem pasującym do najpewniejszej wskazówki, a gdy
+    // żadna nie pasuje — pierwsze okno.
+    public static IntPtr FindWindowOf(uint pid, IReadOnlyList<string> titleHints)
     {
-        var best = IntPtr.Zero;
-        var first = IntPtr.Zero;
+        var windows = new List<(IntPtr Hwnd, string Title)>();
         EnumWindows((hwnd, _) =>
         {
-            if (!IsWindowVisible(hwnd) || ProcessOf(hwnd) != pid) return true;
-            var title = TitleOf(hwnd);
-            if (title.Length == 0) return true;
-            if (first == IntPtr.Zero) first = hwnd;
-            if (!string.IsNullOrEmpty(titlePart) && title.Contains(titlePart, StringComparison.Ordinal))
+            if (IsWindowVisible(hwnd) && ProcessOf(hwnd) == pid)
             {
-                best = hwnd;
-                return false;
+                var title = TitleOf(hwnd);
+                if (title.Length > 0) windows.Add((hwnd, title));
             }
             return true;
         }, IntPtr.Zero);
-        return best != IntPtr.Zero ? best : first;
+        if (windows.Count == 0) return IntPtr.Zero;
+        foreach (var hint in titleHints)
+        {
+            foreach (var (hwnd, title) in windows)
+            {
+                if (title.Contains(hint, StringComparison.OrdinalIgnoreCase)) return hwnd;
+            }
+        }
+        return windows[0].Hwnd;
     }
 }

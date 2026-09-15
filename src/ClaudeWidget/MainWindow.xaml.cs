@@ -9,6 +9,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using ClaudeWidget.Core;
 using ClaudeWidget.Core.Agents;
+using ClaudeWidget.Core.Ide;
 using ClaudeWidget.Core.Limits;
 using ClaudeWidget.Core.Sessions;
 using ClaudeWidget.Core.Text;
@@ -49,6 +50,7 @@ public partial class MainWindow : Window
     private readonly WidgetPaths _paths;
     private readonly SessionAggregator _aggregator;
     private readonly HostResolver _hostResolver = new();
+    private readonly VsCodeBridge _vsCode;
     private readonly UpdateService _updates = new();
     private readonly Dictionary<string, RadialGradientBrush> _litFill = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _fullGlow = [];
@@ -93,6 +95,7 @@ public partial class MainWindow : Window
         _restartArgs = ["--state-dir", _paths.StateDir];
         _aggregator = new SessionAggregator(_paths, new SystemProcessProbe());
         _aggregator.SessionClosed += _hostResolver.Forget;
+        _vsCode = VsCodeBridge.For(_paths, IsProcessAlive);
 
         InitializeComponent();
         BuildPalette();
@@ -310,12 +313,38 @@ public partial class MainWindow : Window
         if (session.Pid == 0) return;
         // Zapytanie WMI o proces-hosta trwa czasem setki ms; idzie w tle, żeby klik albo skrót
         // klawiszowy nie zamroziły okna.
-        var hostPid = await _hostResolver.ResolveAsync(session.Pid);
-        if (hostPid == 0) return;
-        var target = NativeMethods.FindWindowOf((uint)hostPid, session.Name);
+        var host = await _hostResolver.ResolveAsync(session.Pid);
+        if (host.HostPid == 0) return;
+        // Terminal w VS Code: okno z tym terminalem zna rozszerzenie-most — jego folder idzie na
+        // początek wskazówek, a po wyciągnięciu okna rozszerzenie samo przełącza na terminal sesji.
+        var bridgeWindow = VsCodeBridge.OwnerOf(_vsCode.ReadWindows(), host.Chain);
+        var target = NativeMethods.FindWindowOf((uint)host.HostPid, TitleHints(session, host.HostPid, bridgeWindow));
         if (target == IntPtr.Zero) return;
         if (NativeMethods.IsIconic(target)) NativeMethods.ShowWindow(target, NativeMethods.SwRestore);
         NativeMethods.SetForegroundWindow(target);
+        if (bridgeWindow is not null) _vsCode.RequestFocus(host.Chain, NowMs());
+    }
+
+    // Pliki ~/.claude/ide/*.lock czyta się przy każdym użyciu: to kilka małych plików, a okna IDE
+    // otwierają się i zamykają w trakcie pracy.
+    private static IReadOnlyList<string> TitleHints(SessionInfo session, int hostPid, VsCodeWindow? bridgeWindow)
+    {
+        var hints = WindowTitleHints.For(session, IdeLocks.Read(IdeLocks.DefaultDir()), hostPid);
+        var folder = bridgeWindow is null ? null : VsCodeBridge.FolderLeaf(bridgeWindow, session.Cwd);
+        return folder is null ? hints : [folder, .. hints.Where(hint => !hint.Equals(folder, StringComparison.OrdinalIgnoreCase))];
+    }
+
+    private static bool IsProcessAlive(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     // Sesja w tle nie ma okna — otwiera się ją w nowej karcie Windows Terminal (`claude attach`),
@@ -388,13 +417,27 @@ public partial class MainWindow : Window
         var foreground = NativeMethods.GetForegroundWindow();
         var foregroundPid = (int)NativeMethods.ProcessOf(foreground);
         var title = NativeMethods.TitleOf(foreground);
+        var bridgeWindows = _vsCode.ReadWindows();
         foreach (var session in fresh)
         {
             // Zapytanie WMI liczy się w tle; dopóki wynik nie jest gotowy, sesja po prostu czeka
             // do następnego tyknięcia timera zamiast blokować wątek UI co sekundę.
-            if (!_hostResolver.TryGetCached(session.Pid, out var hostPid)) continue;
-            var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var otherHost) && otherHost == hostPid);
-            var looking = hostPid != 0 && hostPid == foregroundPid && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
+            if (!_hostResolver.TryGetCached(session.Pid, out var host)) continue;
+            var hostPid = host.HostPid;
+            bool looking;
+            if (VsCodeBridge.OwnerOf(bridgeWindows, host.Chain) is { } bridgeWindow)
+            {
+                // Rozszerzenie wie, który terminal jest aktywny w oknie z fokusem — pewniejsze niż tytuł.
+                looking = hostPid == foregroundPid && VsCodeBridge.IsLookingAt(bridgeWindow, host.Chain);
+            }
+            else
+            {
+                var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.HostPid == hostPid);
+                // Bez rozszerzenia rozstrzyga sama nazwa sesji w tytule: nazwa projektu czy folderu jako
+                // fragment pasowałaby też do tytułów innych kart (np. „api”) i gasiła nieprzejrzane wyniki.
+                looking = hostPid != 0 && hostPid == foregroundPid
+                    && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
+            }
             if (!looking) { _dwell.Remove(session.Id); continue; }
             if (!_dwell.TryGetValue(session.Id, out var since)) _dwell[session.Id] = nowMs;
             else if (nowMs - since >= SeenAfterMs)
@@ -791,6 +834,7 @@ public partial class MainWindow : Window
         _agentsTimer.Start();
         _cleanupTimer.Start();
         _ = _updates.StartAsync(message => WidgetLog.Write(_paths, message), CancellationToken.None);
+        _ = Task.Run(() => Safely("rozszerzenie VS Code", () => VsCodeExtensionInstaller.InstallIfNeeded(_paths, message => WidgetLog.Write(_paths, message))));
     }
 
     private void OnClosed(object? sender, EventArgs e)

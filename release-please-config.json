@@ -18,7 +18,8 @@
     ".": {
       "package-name": "claude-widget",
       "extra-files": [
-        { "type": "generic", "path": "Directory.Build.props" }
+        { "type": "generic", "path": "Directory.Build.props" },
+        { "type": "json", "path": "extension/package.json", "jsonpath": "$.version" }
       ]
     }
   }

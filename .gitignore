@@ -7,3 +7,5 @@ obj/
 publish/
 Releases/
 .claude/worktrees/
+extension/out/
+*.vsix
