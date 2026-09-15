@@ -266,6 +266,9 @@ public partial class MainWindow : Window
                     AutoReverse = true,
                     RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
                 };
+                // Przezroczyste okno z poświatą WPF rysuje programowo, całe przy każdej klatce: w domyślnych
+                // 60 kl./s sam puls zjadał ~25% rdzenia. Wolnemu pulsowi wystarcza kilkanaście klatek.
+                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(pulse, 15);
                 light.BeginAnimation(OpacityProperty, pulse);
             }
             else
