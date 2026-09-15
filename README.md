@@ -67,6 +67,16 @@ działa coś na pełnym ekranie (prezentacja, film).
 
 Ctrl+Alt+C byłoby naturalniejsze, ale na polskiej klawiaturze to AltGr+C, czyli „ć”.
 
+### Sesje w terminalu VS Code
+
+Kliknięcie sesji, która działa w terminalu VS Code, wyciąga właściwe okno VS Code (także gdy masz
+ich kilka, np. dla różnych worktree), pokazuje panel terminala i przełącza na kartę z tą sesją.
+Robi to małe rozszerzenie *Claude Code widget bridge*, które widżet instaluje sam przy starcie
+w VS Code (a także w Cursorze i Windsurfie, jeśli ich polecenie jest w `PATH`). Dzięki niemu nowy
+wynik uznaje się za przejrzany dopiero wtedy, gdy terminal tej sesji jest aktywny w oknie, na które
+patrzysz. Bez rozszerzenia (np. gdy VS Code zainstalujesz po widżecie — dojdzie przy następnym
+starcie widżetu) kliknięcie tylko wyciąga właściwe okno.
+
 ## Jak to działa
 
 - `ClaudeWidgetHook.exe hook` dostaje zdarzenia sesji od Claude Code (start, polecenie, prośba

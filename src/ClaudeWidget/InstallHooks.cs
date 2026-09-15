@@ -31,6 +31,7 @@ public static class InstallHooks
         Log("przed odinstalowaniem");
         Safe("usuwanie hooków", () => ClaudeSettings.Remove(ClaudeSettings.DefaultPath));
         Safe("autostart", () => AutostartService.SetEnabled(false));
+        Safe("rozszerzenie VS Code", () => VsCodeExtensionInstaller.Uninstall(Log));
     }
 
     private static string HookExePath() => Path.Combine(AppContext.BaseDirectory, "ClaudeWidgetHook.exe");
