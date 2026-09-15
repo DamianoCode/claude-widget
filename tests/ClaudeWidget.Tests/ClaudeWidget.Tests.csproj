@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ClaudeWidget.Core\ClaudeWidget.Core.csproj" />
+    <!-- Testy uruchamiają ClaudeWidgetHook.exe tak, jak robi to Claude Code: jako proces potomny. -->
+    <ProjectReference Include="..\..\src\ClaudeWidget.Hook\ClaudeWidget.Hook.csproj" />
   </ItemGroup>
 
 </Project>

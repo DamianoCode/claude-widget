@@ -64,7 +64,10 @@ static void RunStatusLine()
         // ignorowane celowo
     }
 
-    Console.Out.Write(StatusLineEngine.Render(input));
+    // Claude Code czyta linię statusu jako UTF-8, a Console.Out koduje stroną kodową konsoli —
+    // „·” zamieniłoby się w znak sterujący. Bajty idą więc prosto do strumienia, bez BOM.
+    using var stdout = Console.OpenStandardOutput();
+    stdout.Write(System.Text.Encoding.UTF8.GetBytes(StatusLineEngine.Render(input)));
 }
 
 // Bufor wejścia czyta się w całości przed dekodowaniem: znak wielobajtowy na granicy kawałków
