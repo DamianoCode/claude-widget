@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "pull-request-title-pattern": "chore: wydanie ${version}",
+  "changelog-sections": [
+    { "type": "feat", "section": "Nowe funkcje" },
+    { "type": "fix", "section": "Poprawki" },
+    { "type": "perf", "section": "Wydajność" },
+    { "type": "docs", "section": "Dokumentacja", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true },
+    { "type": "build", "section": "Budowanie", "hidden": true },
+    { "type": "chore", "section": "Porządki", "hidden": true },
+    { "type": "refactor", "section": "Refaktoryzacja", "hidden": true },
+    { "type": "test", "section": "Testy", "hidden": true }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "claude-widget",
+      "extra-files": [
+        { "type": "generic", "path": "Directory.Build.props" }
+      ]
+    }
+  }
+}

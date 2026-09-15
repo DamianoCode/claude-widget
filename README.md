@@ -26,8 +26,10 @@ Twoje własne hooki i ustawienia zostają.
 
 Wymagania: Windows 10 lub 11 (x64) i Claude Code. Limity konta pokazują się w planach Pro i Max.
 
-**Aktualizacje** przychodzą same: widżet co kilka godzin sprawdza nowe wydanie, pobiera je w tle,
-a w menu ikony w zasobniku pojawia się „Zaktualizuj do … i uruchom ponownie”.
+**Aktualizacje** przychodzą same: widżet przy starcie i co kilka godzin sprawdza nowe wydanie,
+pobiera je w tle (zwykle jako małą paczkę różnicową) i instaluje przy następnym uruchomieniu,
+np. po restarcie komputera. Kto chce od razu, wybiera w menu ikony w zasobniku „Zaktualizuj do …
+i uruchom ponownie”.
 
 **Odinstalowanie:** Ustawienia Windows → Aplikacje → *Claude Code widget*. Hooki i statusline
 widżetu znikają z `settings.json`; stan w `~\.claude\widget` zostaje.
@@ -112,6 +114,10 @@ dotnet run --project src/ClaudeWidget -- --state-dir $env:TEMP\widget-dev\state 
 | `src/ClaudeWidget` | `ClaudeWidget.exe` — widżet WPF, instalacja i aktualizacje (Velopack) |
 | `tests/ClaudeWidget.Tests` | testy xUnit, także `ClaudeWidgetHook.exe` uruchamiany jako proces potomny |
 
-**Wydanie:** `git tag v1.2.3 && git push origin v1.2.3`. Workflow `release` zbuduje widżet z własnym
-runtime .NET i hook, spakuje je [Velopackiem](https://velopack.io) i opublikuje wydanie z
-`Setup.exe` oraz paczkami, z których zainstalowane widżety same się zaktualizują.
+**Wydania** prowadzi [release-please](https://github.com/googleapis/release-please). Po każdym
+scaleniu do `main` aktualizuje PR „chore: wydanie X.Y.Z”: numer wersji wynika z typów commitów
+(`fix:` → poprawka, `feat:` → nowa funkcja, `feat!:` → nowa wersja główna), a zmiany trafiają do
+`CHANGELOG.md`. Scalenie tego PR publikuje wydanie: workflow `release` zbuduje widżet z własnym
+runtime .NET i hook, spakuje je [Velopackiem](https://velopack.io) i dołączy `Setup.exe` oraz
+paczki, z których zainstalowane widżety same się zaktualizują. Commity `docs:`, `ci:`, `chore:`
+itp. nie tworzą nowej wersji.
