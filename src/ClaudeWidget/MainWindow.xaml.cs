@@ -324,6 +324,7 @@ public partial class MainWindow : Window
         // oknach jednego Windows Terminal, gdzie tytuł mówi tylko o aktywnej karcie. Liczy się je od
         // nowa przy każdym kliknięciu, bo kartę da się przenieść do innego okna.
         var consoleWindow = await Task.Run(() => NativeMethods.ConsoleOwnerWindow(session.Pid));
+        _hostResolver.UpdateWindow(session.Pid, consoleWindow);
         // Terminal w VS Code: okno z tym terminalem zna rozszerzenie-most — jego folder idzie na
         // początek wskazówek, a po wyciągnięciu okna rozszerzenie samo przełącza na terminal sesji.
         var bridgeWindow = VsCodeBridge.OwnerOf(_vsCode.ReadWindows(), host.Chain);
@@ -464,11 +465,15 @@ public partial class MainWindow : Window
         }
         if (host.Window != IntPtr.Zero)
         {
-            // Dokładne okno terminala z konsoli sesji; nazwa w tytule rozstrzyga już tylko wtedy, gdy
-            // w tym jednym oknie jest kilka sesji w kartach.
+            // Dokładne okno terminala z konsoli sesji. Okno może mieć też inne karty (tytuł to aktywna
+            // karta), więc sesja z nazwą musi być w tytule; sesja bez nazwy (nazwa = projekt) — gdy jest
+            // w tym oknie jedyną sesją.
             if (foreground.Hwnd != host.Window) return false;
-            var inWindow = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.Window == host.Window);
-            return inWindow == 1 || (session.Name.Length > 0 && foreground.Title.Contains(session.Name, StringComparison.Ordinal));
+            if (!session.Name.Equals(session.Project, StringComparison.Ordinal))
+            {
+                return foreground.Title.Contains(session.Name, StringComparison.Ordinal);
+            }
+            return _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.Window == host.Window) == 1;
         }
         var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.HostPid == hostPid);
         // Bez rozszerzenia rozstrzyga sama nazwa sesji w tytule: nazwa projektu czy folderu jako

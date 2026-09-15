@@ -50,6 +50,15 @@ public sealed class HostResolver
         return task;
     }
 
+    /// <summary>Okno ustalone od nowa przy kliknięciu — kartę mogło się przenieść do innego okna.</summary>
+    public void UpdateWindow(int claudePid, IntPtr window)
+    {
+        if (window != IntPtr.Zero && _cache.TryGetValue(claudePid, out var task) && task.IsCompletedSuccessfully)
+        {
+            _cache[claudePid] = Task.FromResult(task.Result with { Window = window });
+        }
+    }
+
     /// <summary>Sesja zamknęła się — zapomnij, gdzie mieszkało jej okno.</summary>
     public void Forget(int claudePid) => _cache.Remove(claudePid);
 
