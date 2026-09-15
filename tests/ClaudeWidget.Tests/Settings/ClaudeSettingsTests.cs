@@ -71,7 +71,8 @@ public sealed class ClaudeSettingsTests
             Assert.Equal(new[] { "hook" }, entry["args"]!.AsArray().Select(a => (string)a!));
             Assert.Equal(HookExePath, (string?)entry["command"]);
         }
-        Assert.Equal($"\"{HookExePath.Replace('\\', '/')}\" statusline", (string?)settings["statusLine"]!["command"]);
+        // Bez cudzysłowu: Claude Code uruchamia statusline przez Git Bash albo PowerShell.
+        Assert.Equal($"{HookExePath.Replace('\\', '/')} statusline", (string?)settings["statusLine"]!["command"]);
         Assert.Equal("dark", (string?)settings["theme"]);
     }
 

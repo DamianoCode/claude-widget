@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using ClaudeWidget.Core;
 using ClaudeWidget.Core.Agents;
 using ClaudeWidget.Core.Ide;
+using ClaudeWidget.Core.Settings;
 using ClaudeWidget.Core.Limits;
 using ClaudeWidget.Core.Sessions;
 using ClaudeWidget.Core.Text;
@@ -689,7 +690,16 @@ public partial class MainWindow : Window
         _panelSignature = "";
         Panel.IsOpen = true;
         Safely("panel", UpdateView);
+        Safely("statusline", UpdateStatusLineHint);
         _hoverTimer.Start();
+    }
+
+    // Bez danych ze statusline (cudza, której instalator nie mógł bezpiecznie podpiąć) nie ma limitów
+    // ani kontekstu — panel mówi dlaczego i jak to naprawić, zamiast pokazywać puste paski.
+    private void UpdateStatusLineHint()
+    {
+        var kind = ClaudeSettings.Inspect(ClaudeSettings.DefaultPath);
+        StatusLineHint.Visibility = kind is StatusLineKind.Foreign or StatusLineKind.Missing ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ClosePanel()
@@ -808,6 +818,8 @@ public partial class MainWindow : Window
         }
 
         // Przyciski obsługują wciśnięcie myszy same, więc karta nie zaczyna przy nich przeciągania.
+        StatusLineHelp.RequestNavigate += (_, e) => Safely("pomoc statusline", () =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }));
         MinimizeButton.Click += (_, _) => Safely("zmniejszanie", SwitchSize);
         ExpandButton.Click += (_, _) => Safely("rozwijanie", SwitchSize);
 
@@ -941,6 +953,8 @@ public partial class MainWindow : Window
         _cleanupTimer.Start();
         _ = _updates.StartAsync(message => WidgetLog.Write(_paths, message), CancellationToken.None);
         _ = Task.Run(() => Safely("rozszerzenie VS Code", () => VsCodeExtensionInstaller.InstallIfNeeded(_paths, message => WidgetLog.Write(_paths, message))));
+        // Tylko zainstalowany widżet: uruchomienie deweloperskie wpisałoby swoją ścieżkę do settings.json.
+        if (_updates.IsInstalled) _ = Task.Run(InstallHooks.ReconcileSettings);
     }
 
     private void OnClosed(object? sender, EventArgs e)

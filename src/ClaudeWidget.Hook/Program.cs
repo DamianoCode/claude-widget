@@ -17,6 +17,9 @@ switch (command)
     case "statusline":
         RunStatusLine();
         break;
+    case "tee":
+        RunTee();
+        break;
     default:
         // brak albo nieznana subkomenda: cicho, kod 0 — tak samo jak przy błędnym wejściu
         break;
@@ -70,17 +73,44 @@ static void RunStatusLine()
     stdout.Write(System.Text.Encoding.UTF8.GetBytes(StatusLineEngine.Render(input)));
 }
 
-// Bufor wejścia czyta się w całości przed dekodowaniem: znak wielobajtowy na granicy kawałków
-// rozpadłby się przy dekodowaniu każdego kawałka osobno.
-static JsonElement? ReadInput()
+// Przekaźnik przed cudzą statusline (`…ClaudeWidgetHook.exe tee | <komenda>`): zapisuje dane dla
+// widżetu i oddaje wejście dalej bajt w bajt, więc cudza linia statusu wygląda jak dotąd.
+static void RunTee()
+{
+    var bytes = ReadAllInput();
+    try
+    {
+        if (AttendedSession.IsAttended() && Parse(bytes) is { } input)
+        {
+            StatusLineEngine.Record(WidgetPaths.FromEnvironment(), input, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        }
+    }
+    catch
+    {
+        // zapis dla widżetu nigdy nie może zepsuć cudzej statusline
+    }
+    using var stdout = Console.OpenStandardOutput();
+    stdout.Write(bytes);
+}
+
+static byte[] ReadAllInput()
 {
     using var stream = Console.OpenStandardInput();
     using var buffer = new MemoryStream();
     stream.CopyTo(buffer);
-    if (buffer.Length == 0) return null;
+    return buffer.ToArray();
+}
+
+// Bufor wejścia czyta się w całości przed dekodowaniem: znak wielobajtowy na granicy kawałków
+// rozpadłby się przy dekodowaniu każdego kawałka osobno.
+static JsonElement? ReadInput() => Parse(ReadAllInput());
+
+static JsonElement? Parse(byte[] bytes)
+{
+    if (bytes.Length == 0) return null;
     try
     {
-        using var document = JsonDocument.Parse(buffer.ToArray());
+        using var document = JsonDocument.Parse(bytes);
         return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
     }
     catch (JsonException)

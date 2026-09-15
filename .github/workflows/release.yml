@@ -63,6 +63,8 @@ jobs:
           dotnet publish src/ClaudeWidget -c Release -r win-x64 --self-contained -p:Version=$env:VERSION -o publish
           # Hook Native AOT obok widżetu: settings.json wskazuje na current\ClaudeWidgetHook.exe.
           dotnet publish src/ClaudeWidget.Hook -c Release -r win-x64 -p:Version=$env:VERSION -o publish
+          # Przekaźnik przed cudzą statusline: ten sam program pod nazwą, której starsze wersje nie usuwają.
+          Copy-Item publish/ClaudeWidgetHook.exe publish/ClaudeWidgetRelay.exe
       - run: dotnet tool install -g vpk --version 1.2.0
       - name: Previous release for delta updates
         # Paczka przyrostowa to tylko oszczędność pobierania — bez poprzedniego wydania powstaje

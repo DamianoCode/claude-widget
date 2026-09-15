@@ -40,13 +40,30 @@ i przejrzane wyniki przechodzą bez zmian.
 
 ### Gdy masz już własną statusline
 
-Instalator jej nie nadpisuje. Widżet działa wtedy bez limitów i kontekstu, dopóki Twoja
-statusline nie przekaże swojego wejścia widżetowi, np. w PowerShellu:
+Instalator jej nie nadpisuje i nie zmienia jej wyglądu. Jeśli masz Git Bash (Git for Windows)
+i Twoja komenda jest prosta (bez `&&`, `|`, `;`), instalator wstawia przed nią przekaźnik widżetu:
+`{ …/ClaudeWidgetRelay.exe tee || cat; } 2>/dev/null | <Twoja komenda>`. Przekaźnik zapisuje dane
+o limitach i kontekście i oddaje Twojej komendzie wejście bez zmian — a gdyby go zabrakło, `cat`
+oddaje je sam, więc Twoja statusline działa i bez widżetu. Odinstalowanie przywraca komendę
+w oryginale; widżet sprawdza to też przy każdym starcie (np. gdy odinstalujesz Git Bash).
+
+W pozostałych przypadkach (złożona komenda, brak Git Bash — wtedy Claude Code uruchamia statusline
+przez PowerShell) widżet działa bez limitów i kontekstu, a panel pokazuje podpowiedź. Wystarczy
+jedna linia na początku Twojego skryptu, która przekaże mu wejście (wyjście przekaźnika się
+wyrzuca, więc wygląd zostaje):
+
+```bash
+# bash (np. ~/.claude/statusline.sh)
+input=$(cat)
+printf '%s' "$input" | "$(cygpath "$LOCALAPPDATA")/ClaudeWidget/current/ClaudeWidgetHook.exe" statusline > /dev/null
+# ...a dalej Twoja dotychczasowa linia statusu, czytająca z "$input"
+```
 
 ```powershell
+# PowerShell
 $json = [Console]::In.ReadToEnd()
-$json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusline | Out-Null   # zasila widżet
-# ...a dalej Twoja dotychczasowa linia statusu
+$json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusline | Out-Null
+# ...a dalej Twoja dotychczasowa linia statusu, czytająca z $json
 ```
 
 ## Obsługa

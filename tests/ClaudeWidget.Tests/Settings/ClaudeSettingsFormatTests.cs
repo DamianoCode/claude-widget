@@ -29,7 +29,7 @@ public class ClaudeSettingsFormatTests
         var text = File.ReadAllText(path);
         Assert.StartsWith("{\n  \"env\": {\n    \"AUTHOR\": \"Łukasz\"", text);
         Assert.Contains("\"command\": \"a && b\"", text);
-        Assert.Contains("\"command\": \"\\\"C:/Users/me/AppData/Local/ClaudeWidget/current/ClaudeWidgetHook.exe\\\" statusline\"", text);
+        Assert.Contains("\"command\": \"C:/Users/me/AppData/Local/ClaudeWidget/current/ClaudeWidgetHook.exe statusline\"", text);
         Assert.DoesNotContain("\r", text);
         Assert.EndsWith("}\n", text);
     }
