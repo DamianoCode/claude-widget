@@ -6,23 +6,14 @@ on:
 
 jobs:
   test:
-    # Widżet działa tylko na Windows, a testy hooka używają ścieżek Windows.
+    # Widżet działa tylko na Windows (WPF, Win32), a hook kompiluje się do Native AOT dla win-x64.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          node-version: '22.x'
-      - run: npm test
-      - name: PowerShell scripts parse and carry a BOM
-        shell: powershell
-        run: |
-          $failed = $false
-          foreach ($file in Get-ChildItem -Recurse -Filter *.ps1) {
-            $tokens = $null; $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors)
-            foreach ($e in $errors) { "$($file.Name):$($e.Extent.StartLineNumber) $($e.Message)"; $failed = $true }
-            $head = [IO.File]::ReadAllBytes($file.FullName) | Select-Object -First 3
-            if (($head -join ',') -ne '239,187,191') { "$($file.Name): no UTF-8 BOM - Windows PowerShell 5.1 would misread Polish text"; $failed = $true }
-          }
-          if ($failed) { exit 1 }
+          dotnet-version: '10.0.x'
+      - run: dotnet build ClaudeWidget.slnx -c Release
+      - run: dotnet test ClaudeWidget.slnx -c Release --no-build
+      - name: Hook compiles with Native AOT
+        run: dotnet publish src/ClaudeWidget.Hook -c Release -r win-x64 -o publish-hook

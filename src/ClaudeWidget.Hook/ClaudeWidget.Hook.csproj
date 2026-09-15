@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>ClaudeWidgetHook</AssemblyName>
+    <RootNamespace>ClaudeWidget.Hook</RootNamespace>
+    <!-- Claude Code uruchamia hook przy każdym zdarzeniu, a statusline przy każdym odświeżeniu:
+         Native AOT startuje w ~30 ms i nie potrzebuje runtime .NET ani Node. -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Odczyt PID rodzica przez NtQueryInformationProcess wymaga wskaźnika ref-struct w P/Invoke. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClaudeWidget.Core\ClaudeWidget.Core.csproj" />
+  </ItemGroup>
+
+</Project>

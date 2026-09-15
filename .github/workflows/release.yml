@@ -1,0 +1,41 @@
+name: release
+
+# Wydanie: git tag v1.2.3 && git push origin v1.2.3. Powstaje wydanie na GitHubie z Setup.exe
+# (instalacja bez uprawnień administratora) i paczkami, z których zainstalowane widżety same się
+# aktualizują — także przyrostowo, bo poprzednie wydanie jest pobierane przed pakowaniem.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      REPO_URL: https://github.com/${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version from tag
+        shell: pwsh
+        run: '"VERSION=$("${{ github.ref_name }}".TrimStart("v"))" >> $env:GITHUB_ENV'
+      - run: dotnet test ClaudeWidget.slnx -c Release
+      - name: Publish widget and hook
+        shell: pwsh
+        run: |
+          # Widżet z własnym runtime .NET — na komputerze znajomego nie trzeba niczego doinstalowywać.
+          dotnet publish src/ClaudeWidget -c Release -r win-x64 --self-contained -p:Version=$env:VERSION -o publish
+          # Hook Native AOT obok widżetu: settings.json wskazuje na current\ClaudeWidgetHook.exe.
+          dotnet publish src/ClaudeWidget.Hook -c Release -r win-x64 -p:Version=$env:VERSION -o publish
+      - run: dotnet tool install -g vpk --version 1.2.0
+      - name: Pack and upload
+        shell: pwsh
+        run: |
+          vpk download github --repoUrl $env:REPO_URL --token $env:GH_TOKEN
+          vpk pack --packId ClaudeWidget --packVersion $env:VERSION --packDir publish --mainExe ClaudeWidget.exe --packTitle "Claude Code widget" --packAuthors DamianoCode
+          vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN --publish --tag ${{ github.ref_name }} --releaseName "Claude Code widget $env:VERSION"
