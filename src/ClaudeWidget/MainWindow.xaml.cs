@@ -953,6 +953,8 @@ public partial class MainWindow : Window
         _cleanupTimer.Start();
         _ = _updates.StartAsync(message => WidgetLog.Write(_paths, message), CancellationToken.None);
         _ = Task.Run(() => Safely("rozszerzenie VS Code", () => VsCodeExtensionInstaller.InstallIfNeeded(_paths, message => WidgetLog.Write(_paths, message))));
+        // Tylko zainstalowany widżet: uruchomienie deweloperskie wpisałoby swoją ścieżkę do settings.json.
+        if (_updates.IsInstalled) _ = Task.Run(InstallHooks.ReconcileSettings);
     }
 
     private void OnClosed(object? sender, EventArgs e)

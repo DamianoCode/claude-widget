@@ -18,7 +18,7 @@ public static class InstallHooks
     public static void AfterInstallOrUpdate(bool isFirstInstall)
     {
         Log("po instalacji/aktualizacji");
-        Safe("hooki", () => ClaudeSettings.Install(ClaudeSettings.DefaultPath, HookExePath(), ShellSafePath(HookExePath()), GitBashAvailable()));
+        ReconcileSettings();
         Safe("sprzątanie starej wersji", CleanupLegacyInstall);
         if (isFirstInstall)
         {
@@ -36,17 +36,27 @@ public static class InstallHooks
 
     private static string HookExePath() => Path.Combine(AppContext.BaseDirectory, "ClaudeWidgetHook.exe");
 
+    /// <summary>
+    /// Hooki i statusline w settings.json — po instalacji i aktualizacji, a także przy każdym starcie
+    /// widżetu, bo powłoka statusline może się zmienić (ktoś zainstalował albo usunął Git Bash). Gdy nic
+    /// się nie zmienia, plik zostaje nietknięty.
+    /// </summary>
+    public static void ReconcileSettings() => Safe("hooki i statusline", () =>
+        ClaudeSettings.Install(ClaudeSettings.DefaultPath, HookExePath(), ShellSafePath(HookExePath()),
+            GitBashAvailable() ? StatusLineShell.Bash : StatusLineShell.PowerShell));
+
     // Claude Code uruchamia statusline przez Git Bash, a bez niego przez PowerShell — obie powłoki przyjmą
-    // ścieżkę bez spacji i bez cudzysłowu. Gdy katalog ma spacje (np. w nazwie użytkownika), bierze się
-    // jego krótką nazwę 8.3; nazwa pliku zostaje, bo po niej instalator rozpoznaje swoje wpisy.
+    // ścieżkę bez cudzysłowu, jeśli nie ma w niej znaków specjalnych (spacja, apostrof, nawias, &…). Gdy
+    // katalog je ma (np. w nazwie użytkownika), bierze się jego krótką nazwę 8.3; nazwa pliku zostaje,
+    // bo po niej instalator rozpoznaje swoje wpisy.
     private static string ShellSafePath(string path)
     {
         var dir = Path.GetDirectoryName(path)!;
-        if (!dir.Contains(' ')) return path;
+        if (ClaudeSettings.IsShellSafe(dir)) return path;
         var buffer = new System.Text.StringBuilder(1024);
         var length = GetShortPathName(dir, buffer, buffer.Capacity);
         var shortDir = buffer.ToString();
-        return length > 0 && length < buffer.Capacity && !shortDir.Contains(' ') ? Path.Combine(shortDir, Path.GetFileName(path)) : path;
+        return length > 0 && length < buffer.Capacity && ClaudeSettings.IsShellSafe(shortDir) ? Path.Combine(shortDir, Path.GetFileName(path)) : path;
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]

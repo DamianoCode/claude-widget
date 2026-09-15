@@ -42,8 +42,10 @@ i przejrzane wyniki przechodzą bez zmian.
 
 Instalator jej nie nadpisuje i nie zmienia jej wyglądu. Jeśli masz Git Bash (Git for Windows)
 i Twoja komenda jest prosta (bez `&&`, `|`, `;`), instalator wstawia przed nią przekaźnik widżetu:
-`…/ClaudeWidgetHook.exe tee | <Twoja komenda>`. Przekaźnik zapisuje dane o limitach i kontekście
-i oddaje Twojej komendzie wejście bez zmian; odinstalowanie przywraca komendę w oryginale.
+`{ …/ClaudeWidgetRelay.exe tee || cat; } 2>/dev/null | <Twoja komenda>`. Przekaźnik zapisuje dane
+o limitach i kontekście i oddaje Twojej komendzie wejście bez zmian — a gdyby go zabrakło, `cat`
+oddaje je sam, więc Twoja statusline działa i bez widżetu. Odinstalowanie przywraca komendę
+w oryginale; widżet sprawdza to też przy każdym starcie (np. gdy odinstalujesz Git Bash).
 
 W pozostałych przypadkach (złożona komenda, brak Git Bash — wtedy Claude Code uruchamia statusline
 przez PowerShell) widżet działa bez limitów i kontekstu, a panel pokazuje podpowiedź. Wystarczy
