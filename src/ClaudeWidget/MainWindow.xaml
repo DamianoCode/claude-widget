@@ -26,6 +26,34 @@
         <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#26FF5A4E"/></Trigger>
       </Style.Triggers>
     </Style>
+    <!-- Mały przycisk w rogu karty (zmniejsz / rozwiń): widać go dopiero po najechaniu na kartę. -->
+    <Style x:Key="ChromeButton" TargetType="Button">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#8A8A8A"/>
+      <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" Background="Transparent" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#1FFFFFFF"/>
+                <Setter Property="Foreground" Value="#F3F3F3"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+          <Setter Property="Opacity" Value="1"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
   </Window.Resources>
   <Grid Margin="24">
     <Border x:Name="Card" Width="148" Background="#202020" BorderBrush="#14FFFFFF" BorderThickness="1"
@@ -44,6 +72,9 @@
             <Ellipse Canvas.Left="6.9" Canvas.Top="8.4" Width="2.2" Height="2.2" Fill="#5E5E5E"/>
           </Canvas>
           <TextBlock Text="Claude Code" FontSize="11" Foreground="#8A8A8A" HorizontalAlignment="Center"/>
+          <Button x:Name="MinimizeButton" Style="{StaticResource ChromeButton}" Content="&#xE921;" FontSize="9"
+                  Width="18" Height="16" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,-2,-4,-2"
+                  ToolTip="Zmniejsz do widoku mini"/>
         </Grid>
         <Border Background="#141414" BorderBrush="#0AFFFFFF" BorderThickness="1" CornerRadius="12" Padding="0,10,0,2">
           <StackPanel HorizontalAlignment="Center">
@@ -83,6 +114,8 @@
         <Border Width="24" Height="24" CornerRadius="12" Background="#0A0A0A" Margin="0,0,0,2">
           <Grid><Ellipse x:Name="MiniGotowe" Width="17" Height="17"/><TextBlock x:Name="MiniCountGotowe" Style="{StaticResource Count}" FontSize="10"/></Grid>
         </Border>
+        <Button x:Name="ExpandButton" Style="{StaticResource ChromeButton}" Content="&#xE70D;" FontSize="8"
+                Width="24" Height="12" Margin="0,0,0,1" ToolTip="Rozwiń do pełnego widoku"/>
       </StackPanel>
     </Border>
     <Popup x:Name="Panel" Placement="Left" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade">

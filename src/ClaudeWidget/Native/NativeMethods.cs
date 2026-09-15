@@ -135,4 +135,77 @@ internal static class NativeMethods
         }
         return windows[0].Hwnd;
     }
+
+    private const uint GaRootOwner = 3;
+    private static readonly int[] StdHandles = [-10, -11, -12]; // wejście, wyjście, błędy
+    private static readonly object ConsoleLock = new();
+    private static readonly TimeSpan ConsoleLockTimeout = TimeSpan.FromMilliseconds(500);
+    // W polu, żeby GC nie zebrał delegata, dopóki Windows może go wywołać.
+    private static readonly ConsoleCtrlHandler IgnoreConsoleEvents = _ => true;
+    private static bool _consoleHandlerRegistered;
+
+    private delegate bool ConsoleCtrlHandler(uint ctrlType);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(uint pid);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetConsoleCtrlHandler(ConsoleCtrlHandler handler, bool add);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetStdHandle(int which);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetStdHandle(int which, IntPtr handle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    /// <summary>
+    /// Okno terminala, w którym działa proces konsolowy: okno jego konsoli, a w Windows Terminal
+    /// (ConPTY) — okno, do którego należy ukryte okno pseudokonsoli. Dokładne także wtedy, gdy jeden
+    /// proces Windows Terminal ma kilka okien (tytuł okna to tylko aktywna karta) i gdy okno jest
+    /// zminimalizowane. Zero, gdy się nie da: brak konsoli lub uprawnień, okno niewidoczne.
+    /// </summary>
+    public static IntPtr ConsoleOwnerWindow(int pid)
+    {
+        // Proces może mieć jedną konsolę naraz, więc podłączenia idą po kolei. Zawieszona konsola
+        // (np. terminal, który przestał czytać) nie może zablokować wszystkich następnych — po chwili
+        // czekania się rezygnuje, a okno wybiera się jak dawniej, po tytule.
+        if (!Monitor.TryEnter(ConsoleLock, ConsoleLockTimeout)) return IntPtr.Zero;
+        try
+        {
+            // Podłączona konsola wysyła procesowi swoje zdarzenia (Ctrl+C, Ctrl+Break), a domyślna obsługa
+            // zamknęłaby widżet. Własna procedura, nie SetConsoleCtrlHandler(NULL): tamta flaga przechodzi
+            // na procesy potomne, które przestałyby reagować na Ctrl+C.
+            if (!_consoleHandlerRegistered) _consoleHandlerRegistered = SetConsoleCtrlHandler(IgnoreConsoleEvents, true);
+            // AttachConsole podmienia uchwyty standardowe procesu, a FreeConsole ich nie przywraca —
+            // procesy potomne dostałyby zamknięte (i potem ponownie użyte) uchwyty.
+            var saved = StdHandles.Select(GetStdHandle).ToArray();
+            FreeConsole();
+            try
+            {
+                if (!AttachConsole((uint)pid)) return IntPtr.Zero;
+                var console = GetConsoleWindow();
+                if (console == IntPtr.Zero) return IntPtr.Zero;
+                var root = GetAncestor(console, GaRootOwner);
+                return root != IntPtr.Zero && IsWindowVisible(root) ? root : IntPtr.Zero;
+            }
+            finally
+            {
+                FreeConsole();
+                for (var i = 0; i < StdHandles.Length; i++) SetStdHandle(StdHandles[i], saved[i]);
+            }
+        }
+        finally
+        {
+            Monitor.Exit(ConsoleLock);
+        }
+    }
 }

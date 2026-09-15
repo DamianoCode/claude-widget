@@ -88,7 +88,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
     /// </summary>
     private void MergeAgentSessions(List<SessionInfo> sessions, AgentsSnapshot? agents, long nowMs)
     {
-        if (agents is null || !agents.Ok || nowMs - agents.UpdatedAt > AgentsStaleMs) return;
+        if (!IsUsable(agents, nowMs)) return;
 
         var known = new Dictionary<string, SessionInfo>();
         foreach (var session in sessions) known[session.Id] = session;
@@ -157,6 +157,10 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
             }
         }
     }
+
+    /// <summary>Lista agentów udana i świeża — bez niej sesji w tle po prostu nie widać.</summary>
+    public static bool IsUsable([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] AgentsSnapshot? agents, long nowMs) =>
+        agents is { Ok: true } && nowMs - agents.UpdatedAt <= AgentsStaleMs;
 
     // Po zamknięciu sesji jej PID może dostać inny proces. Nazwa odsiewa inne programy, a czas
     // startu — inny proces claude albo node: ten, który ruszył po ostatnim zapisie hooka, nie jest

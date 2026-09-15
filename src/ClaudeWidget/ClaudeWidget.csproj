@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Wersja Windows SDK w TFM daje dostęp do powiadomień Windows (Windows.UI.Notifications). -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <!-- Ikona w zasobniku (NotifyIcon) jest z WinForms. -->
     <UseWindowsForms>true</UseWindowsForms>
@@ -28,6 +30,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ClaudeWidget.Core\ClaudeWidget.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Wbudowane dźwięki (make-sounds.ps1); własne z ~/.claude/widget/sounds mają pierwszeństwo. -->
+    <Content Include="Assets\Sounds\*.wav" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
