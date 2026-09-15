@@ -312,11 +312,16 @@ public partial class MainWindow : Window
         // klawiszowy nie zamroziły okna.
         var hostPid = await _hostResolver.ResolveAsync(session.Pid);
         if (hostPid == 0) return;
-        var target = NativeMethods.FindWindowOf((uint)hostPid, session.Name);
+        var target = NativeMethods.FindWindowOf((uint)hostPid, TitleHints(session, hostPid));
         if (target == IntPtr.Zero) return;
         if (NativeMethods.IsIconic(target)) NativeMethods.ShowWindow(target, NativeMethods.SwRestore);
         NativeMethods.SetForegroundWindow(target);
     }
+
+    // Pliki ~/.claude/ide/*.lock czyta się przy każdym użyciu: to kilka małych plików, a okna IDE
+    // otwierają się i zamykają w trakcie pracy.
+    private static IReadOnlyList<string> TitleHints(SessionInfo session, int hostPid) =>
+        WindowTitleHints.For(session, IdeLocks.Read(IdeLocks.DefaultDir()), hostPid);
 
     // Sesja w tle nie ma okna — otwiera się ją w nowej karcie Windows Terminal (`claude attach`),
     // a bez Windows Terminal w nowym oknie konsoli. Wyjście z niej (← albo /exit) jej nie zatrzymuje.
@@ -394,7 +399,7 @@ public partial class MainWindow : Window
             // do następnego tyknięcia timera zamiast blokować wątek UI co sekundę.
             if (!_hostResolver.TryGetCached(session.Pid, out var hostPid)) continue;
             var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var otherHost) && otherHost == hostPid);
-            var looking = hostPid != 0 && hostPid == foregroundPid && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
+            var looking = hostPid != 0 && hostPid == foregroundPid && (sharing == 1 || WindowTitleHints.MatchesAny(title, TitleHints(session, hostPid)));
             if (!looking) { _dwell.Remove(session.Id); continue; }
             if (!_dwell.TryGetValue(session.Id, out var since)) _dwell[session.Id] = nowMs;
             else if (nowMs - since >= SeenAfterMs)

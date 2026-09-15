@@ -21,6 +21,9 @@ public sealed record SessionInfo
 
     public required string Project { get; init; }
 
+    /// <summary>Katalog roboczy sesji; pusty, gdy nieznany. Po nim szuka się okna IDE z tym workspace.</summary>
+    public string Cwd { get; init; } = "";
+
     public required string Name { get; init; }
 
     public double? ContextPct { get; init; }
