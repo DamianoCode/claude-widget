@@ -1,4 +1,5 @@
-using System.Text;
+using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -149,7 +150,7 @@ public static class ClaudeSettings
     {
         if (existed)
         {
-            var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+            var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             File.Copy(settingsPath, $"{settingsPath}.bak-widget-{stamp}", overwrite: true);
         }
         else
@@ -178,17 +179,34 @@ public static class ClaudeSettings
         }
         try
         {
-            return JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+            var parsed = JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+            // JsonObject rozwija się leniwie: duplikat klucza wyszedłby dopiero po zrobieniu kopii
+            // zapasowej, więc rozwija się go tutaj.
+            _ = parsed.Count;
+            return parsed;
         }
-        catch (JsonException error)
+        catch (Exception error) when (error is JsonException or ArgumentException)
         {
             throw new InvalidOperationException($"Nie da się odczytać {path}: {error.Message}. Niczego nie zmieniono.", error);
         }
     }
 
+    // Jak JSON.stringify(value, null, 2) + "\n" w wersji z Node: plik edytujesz ręcznie, więc polskie
+    // znaki, cudzysłowy i && zostają czytelne zamiast \uXXXX, a wiersze kończą się LF.
     private static void Save(string path, JsonObject value)
     {
-        var json = value.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(path, json + "\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Indented = true,
+            IndentSize = 2,
+            NewLine = "\n",
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        }))
+        {
+            value.WriteTo(writer);
+        }
+        buffer.WriteByte((byte)'\n');
+        File.WriteAllBytes(path, buffer.ToArray());
     }
 }

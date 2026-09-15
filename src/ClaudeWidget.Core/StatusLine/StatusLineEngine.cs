@@ -21,7 +21,7 @@ public static class StatusLineEngine
             var usage = new SessionUsage
             {
                 Name = GetString(data, "session_name") ?? string.Empty,
-                Project = Path.GetFileName(ProjectDir(data)),
+                Project = Hook.HookEngine.BaseName(ProjectDir(data)),
                 Model = ModelDisplayName(data) ?? string.Empty,
                 ContextPct = NumberOrNull(context, "used_percentage"),
                 ContextTokens = NumberOrNull(context, "total_input_tokens"),

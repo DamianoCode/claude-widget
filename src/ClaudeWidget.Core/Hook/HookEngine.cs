@@ -206,6 +206,8 @@ public static partial class HookEngine
             }
             return true;
         }
+        // Tablica w miejscu obiektu nie ma pól: jak w JS, pasuje tylko do pustego obiektu.
+        if (actualValue.ValueKind != JsonValueKind.Object) return !expectedValue.EnumerateObject().Any();
         foreach (var property in expectedValue.EnumerateObject())
         {
             JsonElement? actualProperty = actualValue.TryGetProperty(property.Name, out var value) ? value : null;
@@ -250,13 +252,16 @@ public static partial class HookEngine
         return $"Zgoda: {DescribeTool(name, hasArgs ? args : default, hasArgs)}";
     }
 
+    // Jak path.basename w Node: ukośnik na końcu nie daje pustej nazwy.
+    internal static string BaseName(string? path) => Path.GetFileName((path ?? string.Empty).TrimEnd('\\', '/'));
+
     private static string DescribeTool(string? name, JsonElement args, bool hasArgs)
     {
         var path = hasArgs ? GetString(args, "file_path") ?? GetString(args, "notebook_path") : null;
         string subject;
-        if (path is not null)
+        if (!string.IsNullOrEmpty(path))
         {
-            subject = Path.GetFileName(path);
+            subject = BaseName(path);
         }
         else
         {
