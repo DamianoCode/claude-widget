@@ -6,3 +6,4 @@ obj/
 *.user
 publish/
 Releases/
+.claude/worktrees/
