@@ -18,7 +18,7 @@ public static class InstallHooks
     public static void AfterInstallOrUpdate(bool isFirstInstall)
     {
         Log("po instalacji/aktualizacji");
-        Safe("hooki", () => ClaudeSettings.Install(ClaudeSettings.DefaultPath, HookExePath()));
+        Safe("hooki", () => ClaudeSettings.Install(ClaudeSettings.DefaultPath, HookExePath(), ShellSafePath(HookExePath()), GitBashAvailable()));
         Safe("sprzątanie starej wersji", CleanupLegacyInstall);
         if (isFirstInstall)
         {
@@ -35,6 +35,38 @@ public static class InstallHooks
     }
 
     private static string HookExePath() => Path.Combine(AppContext.BaseDirectory, "ClaudeWidgetHook.exe");
+
+    // Claude Code uruchamia statusline przez Git Bash, a bez niego przez PowerShell — obie powłoki przyjmą
+    // ścieżkę bez spacji i bez cudzysłowu. Gdy katalog ma spacje (np. w nazwie użytkownika), bierze się
+    // jego krótką nazwę 8.3; nazwa pliku zostaje, bo po niej instalator rozpoznaje swoje wpisy.
+    private static string ShellSafePath(string path)
+    {
+        var dir = Path.GetDirectoryName(path)!;
+        if (!dir.Contains(' ')) return path;
+        var buffer = new System.Text.StringBuilder(1024);
+        var length = GetShortPathName(dir, buffer, buffer.Capacity);
+        var shortDir = buffer.ToString();
+        return length > 0 && length < buffer.Capacity && !shortDir.Contains(' ') ? Path.Combine(shortDir, Path.GetFileName(path)) : path;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern uint GetShortPathName(string longPath, System.Text.StringBuilder shortPath, int size);
+
+    // Czy Claude Code uruchomi statusline przez Git Bash (tak jak on: własna ścieżka albo Git for Windows).
+    // Tylko wtedy wpina się przekaźnik przed cudzą statusline.
+    private static bool GitBashAvailable()
+    {
+        var custom = Environment.GetEnvironmentVariable("CLAUDE_CODE_GIT_BASH_PATH");
+        if (!string.IsNullOrWhiteSpace(custom)) return File.Exists(custom.Trim('"'));
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var git = Path.Combine(dir.Trim().Trim('"'), "git.exe");
+            if (!File.Exists(git)) continue;
+            var root = Path.GetDirectoryName(Path.GetDirectoryName(git));
+            if (root is not null && File.Exists(Path.Combine(root, "bin", "bash.exe"))) return true;
+        }
+        return File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe"));
+    }
 
     // Sprzątanie po instalatorze z wersji PowerShell: zatrzymuje jej proces, usuwa skrót
     // w Autostart i stare pliki skryptów. Nigdy nie rusza katalogu stanu, configu ani logu —

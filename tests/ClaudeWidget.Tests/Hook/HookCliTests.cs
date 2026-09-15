@@ -13,6 +13,8 @@ public class HookCliTests
         var info = new ProcessStartInfo(Exe, arguments)
         {
             RedirectStandardInput = true,
+            // Claude Code pisze na wejście UTF-8 bez BOM; domyślnie byłaby tu strona kodowa konsoli.
+            StandardInputEncoding = new System.Text.UTF8Encoding(false),
             RedirectStandardOutput = true,
             // Claude Code czyta linię statusu jako UTF-8 — „·” w innym kodowaniu byłoby błędem.
             StandardOutputEncoding = System.Text.Encoding.UTF8,
@@ -61,6 +63,19 @@ public class HookCliTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, stdout);
+    }
+
+    [Fact]
+    public void The_relay_passes_its_input_through_unchanged_and_records_it_for_the_widget()
+    {
+        using var dir = new TempDir();
+        const string input = """{"session_id":"cli3","workspace":{"project_dir":"C:\\apps\\żółw"},"context_window":{"used_percentage":42}}""";
+
+        var (exitCode, stdout) = Run("tee", input, dir.Path);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(input, stdout);
+        Assert.True(File.Exists(dir.File("cli3.usage.json")));
     }
 
     [Fact]

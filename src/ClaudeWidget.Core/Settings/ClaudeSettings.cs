@@ -2,15 +2,32 @@ using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace ClaudeWidget.Core.Settings;
+
+/// <summary>Czyja jest statusline w settings.json — od tego zależy, czy widżet dostaje limity i kontekst.</summary>
+public enum StatusLineKind
+{
+    /// <summary>Brak statusline — widżet nie dostaje danych.</summary>
+    Missing,
+
+    /// <summary>Statusline widżetu.</summary>
+    Widget,
+
+    /// <summary>Cudza statusline z przekaźnikiem widżetu na początku — dane dochodzą, wygląd bez zmian.</summary>
+    Relayed,
+
+    /// <summary>Cudza statusline bez przekaźnika — widżet nie dostaje danych.</summary>
+    Foreign,
+}
 
 /// <summary>
 /// Wpisy widżetu w ~/.claude/settings.json: hooki i statusline. Rusza wyłącznie wpisy widżetu —
 /// także te z wersji z Node (.claude/widget/hook.mjs, .claude/widget/statusline.mjs) — a przed
 /// zapisem zostawia kopię pliku obok.
 /// </summary>
-public static class ClaudeSettings
+public static partial class ClaudeSettings
 {
     private const string LegacyHookMark = ".claude/widget/hook.mjs";
     private const string LegacyStatusMark = ".claude/widget/statusline.mjs";
@@ -24,13 +41,39 @@ public static class ClaudeSettings
     /// wszystkie dawne wpisy widżetu. Cudzej statusline nie nadpisuje.
     /// </summary>
     /// <returns>true, gdy zostawiono cudzą statusline (widżet nie dostanie wtedy limitów ani kontekstu).</returns>
-    public static bool Install(string settingsPath, string hookExePath)
+    /// <param name="statusLineExePath">
+    /// Ścieżka exe w komendzie statusline (domyślnie <paramref name="hookExePath"/>). Claude Code uruchamia
+    /// statusline przez Git Bash, a bez niego przez PowerShell; obie powłoki przyjmą ją bez cudzysłowu,
+    /// o ile nie ma spacji — ścieżkę w cudzysłowie PowerShell uznałby za napis, nie polecenie.
+    /// </param>
+    /// <param name="relayForeign">
+    /// Czy wolno wpiąć przekaźnik przed cudzą statusline. Tylko przy Git Bash: w PowerShellu 5.1 potok
+    /// między programami gubi znaki spoza ASCII i cudza linia statusu mogłaby się zmienić.
+    /// </param>
+    public static bool Install(string settingsPath, string hookExePath, string? statusLineExePath = null, bool relayForeign = false)
     {
         var current = Load(settingsPath, out var existed);
         PrepareForWrite(settingsPath, existed);
-        var (next, foreignStatusLine) = WithWidget(current, hookExePath);
+        var (next, foreignStatusLine) = WithWidget(current, hookExePath, statusLineExePath, relayForeign);
         Save(settingsPath, next);
         return foreignStatusLine;
+    }
+
+    /// <summary>Czyja jest statusline w pliku; nieczytelny plik liczy się jak cudza statusline.</summary>
+    public static StatusLineKind Inspect(string settingsPath)
+    {
+        JsonObject settings;
+        try
+        {
+            settings = Load(settingsPath, out _);
+        }
+        catch (InvalidOperationException)
+        {
+            return StatusLineKind.Foreign;
+        }
+        if (settings["statusLine"] is not JsonObject statusLine) return StatusLineKind.Missing;
+        if (RelayPrefix().IsMatch(AsString(statusLine["command"]))) return StatusLineKind.Relayed;
+        return IsWidgetStatusLine(statusLine) ? StatusLineKind.Widget : StatusLineKind.Foreign;
     }
 
     /// <summary>Usuwa wszystkie wpisy widżetu, aż do pustych grup i pustego obiektu hooks.</summary>
@@ -71,7 +114,14 @@ public static class ClaudeSettings
             }
             if (hooks.Count == 0) next.Remove("hooks");
         }
-        if (IsWidgetStatusLine(next["statusLine"])) next.Remove("statusLine");
+        if (next["statusLine"] is JsonObject statusLine)
+        {
+            var command = AsString(statusLine["command"]);
+            var relay = RelayPrefix().Match(command);
+            // Przekaźnik przed cudzą statusline: zdejmuje się tylko jego — cudza komenda wraca bez zmian.
+            if (relay.Success) statusLine["command"] = command[relay.Length..];
+            else if (IsWidgetStatusLine(statusLine)) next.Remove("statusLine");
+        }
         return next;
     }
 
@@ -79,7 +129,8 @@ public static class ClaudeSettings
     /// Najpierw zdejmuje stare wpisy widżetu, więc ponowna instalacja niczego nie dubluje.
     /// Cudzej statusline nie nadpisuje — bez niej widżet nie zna tylko limitów i kontekstu.
     /// </summary>
-    public static (JsonObject Settings, bool ForeignStatusLine) WithWidget(JsonObject settings, string hookExePath)
+    public static (JsonObject Settings, bool ForeignStatusLine) WithWidget(
+        JsonObject settings, string hookExePath, string? statusLineExePath = null, bool relayForeign = false)
     {
         var next = WithoutWidget(settings);
         var hooks = next["hooks"] as JsonObject;
@@ -106,17 +157,41 @@ public static class ClaudeSettings
             if (spec.Async) hookEntry["async"] = true;
             AddNode(groups, new JsonObject { ["hooks"] = new JsonArray(hookEntry) });
         }
-        var foreignStatusLine = next["statusLine"] is not null;
-        if (!foreignStatusLine)
+        var exe = CommandPath(statusLineExePath ?? hookExePath);
+        var foreignStatusLine = false;
+        if (next["statusLine"] is null)
         {
-            next["statusLine"] = new JsonObject
-            {
-                ["type"] = "command",
-                ["command"] = $"\"{Normalize(hookExePath)}\" statusline",
-            };
+            next["statusLine"] = new JsonObject { ["type"] = "command", ["command"] = $"{exe} statusline" };
+        }
+        else if (relayForeign && next["statusLine"] is JsonObject foreign && CanRelay(AsString(foreign["command"])))
+        {
+            // Przekaźnik zapisuje dane dla widżetu i oddaje wejście cudzej komendzie bez zmian.
+            foreign["command"] = $"{exe} tee | {AsString(foreign["command"])}";
+        }
+        else
+        {
+            foreignStatusLine = true;
         }
         return (next, foreignStatusLine);
     }
+
+    // Bez spacji — bez cudzysłowu, żeby zadziałało i w Git Bash, i w PowerShellu. Ze spacjami (brak
+    // krótkiej nazwy katalogu) zostaje cudzysłów, który rozumie przynajmniej Git Bash.
+    private static string CommandPath(string path)
+    {
+        var normalized = Normalize(path);
+        return normalized.Contains(' ') ? $"\"{normalized}\"" : normalized;
+    }
+
+    // Przekaźnik wpina się tylko przed prostą komendą: w złożonej (a && b, a; b, a | b) wejście
+    // dostałaby tylko pierwsza część i cudza linia statusu mogłaby się rozsypać.
+    private static bool CanRelay(string command) =>
+        command.Trim().Length > 0
+        && command.IndexOfAny(['&', '|', ';', '\n', '\r', '`']) < 0
+        && !command.Contains("$(", StringComparison.Ordinal);
+
+    [GeneratedRegex(@"^\s*""?[^""|&;]*?ClaudeWidgetHook\.exe""?\s+tee\s*\|\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex RelayPrefix();
 
     public static bool IsWidgetHook(JsonNode? hook)
     {
