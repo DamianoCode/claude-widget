@@ -30,9 +30,6 @@ public static class WindowTitleHints
         return hints;
     }
 
-    public static bool MatchesAny(string title, IReadOnlyList<string> hints) =>
-        hints.Any(hint => title.Contains(hint, StringComparison.OrdinalIgnoreCase));
-
     // Katalog sesji to sam folder albo jego podfolder; „emx-monorepo2” nie leży w „emx-monorepo”.
     internal static bool IsInside(string cwd, string folder)
     {

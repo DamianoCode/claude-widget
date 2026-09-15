@@ -56,13 +56,6 @@ public class WindowTitleHintsTests
     }
 
     [Fact]
-    public void A_title_matches_any_hint_regardless_of_case()
-    {
-        Assert.True(WindowTitleHints.MatchesAny(".env.local - IT-858-kasa - Visual Studio Code", ["it-858-kasa"]));
-        Assert.False(WindowTitleHints.MatchesAny("README.md - emx-monorepo - Visual Studio Code", ["it-858-kasa"]));
-    }
-
-    [Fact]
     public void Lock_files_give_the_IDE_process_and_its_folders_and_broken_ones_are_skipped()
     {
         using var dir = new TempDir();

@@ -433,7 +433,10 @@ public partial class MainWindow : Window
             else
             {
                 var sharing = _sessions.Count(s => s.Pid != 0 && _hostResolver.TryGetCached(s.Pid, out var other) && other.HostPid == hostPid);
-                looking = hostPid != 0 && hostPid == foregroundPid && (sharing == 1 || WindowTitleHints.MatchesAny(title, TitleHints(session, hostPid, null)));
+                // Bez rozszerzenia rozstrzyga sama nazwa sesji w tytule: nazwa projektu czy folderu jako
+                // fragment pasowałaby też do tytułów innych kart (np. „api”) i gasiła nieprzejrzane wyniki.
+                looking = hostPid != 0 && hostPid == foregroundPid
+                    && (sharing == 1 || (session.Name.Length > 0 && title.Contains(session.Name, StringComparison.Ordinal)));
             }
             if (!looking) { _dwell.Remove(session.Id); continue; }
             if (!_dwell.TryGetValue(session.Id, out var since)) _dwell[session.Id] = nowMs;

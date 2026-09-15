@@ -1,11 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as path from 'node:path';
-import { bridgeDir, findTerminal, parseRequest, REQUEST_MAX_AGE_MS } from '../protocol';
+import { bridgeDir, findTerminal, parseRequest, REQUEST_MAX_AGE_MS, withTimeout } from '../protocol';
 
 test('the bridge directory sits next to the widget state, as the widget expects', () => {
   assert.equal(bridgeDir({}, 'C:\\Users\\me'), path.join('C:\\Users\\me', '.claude', 'widget', 'vscode'));
-  assert.equal(bridgeDir({ CLAUDE_WIDGET_STATE_DIR: 'D:\\tmp\\w\\state' }, 'C:\\Users\\me'), path.join('D:\\tmp\\w', 'vscode'));
+  assert.equal(bridgeDir({ CLAUDE_WIDGET_STATE_DIR: 'D:\\tmp\\w\\state' }, 'C:\\Users\\me'), path.resolve('D:\\tmp\\w', 'vscode'));
+  // Widżet zdejmuje końcowy ukośnik (WidgetPaths) — tu też, inaczej każda strona patrzy gdzie indziej.
+  assert.equal(bridgeDir({ CLAUDE_WIDGET_STATE_DIR: 'D:\\tmp\\w\\state\\' }, 'C:\\Users\\me'), path.resolve('D:\\tmp\\w', 'vscode'));
+});
+
+test('a terminal pid that never arrives does not hold up the window state', async () => {
+  const never = new Promise<number>(() => undefined);
+  assert.equal(await withTimeout(never, 20), undefined);
+  assert.equal(await withTimeout(Promise.resolve(4120), 20), 4120);
+  assert.equal(await withTimeout(Promise.reject(new Error('closed')), 20), undefined);
 });
 
 test('a fresh request from the widget is accepted with its session pids', () => {

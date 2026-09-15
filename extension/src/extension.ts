@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { bridgeDir, findTerminal, parseRequest, type WindowState } from './protocol';
+import { bridgeDir, findTerminal, parseRequest, PID_TIMEOUT_MS, withTimeout, type WindowState } from './protocol';
 
 export function activate(context: vscode.ExtensionContext): void {
   const dir = bridgeDir(process.env, os.homedir());
@@ -79,7 +79,9 @@ export function deactivate(): void {
 }
 
 function terminalsWithPids(): Promise<Array<{ terminal: vscode.Terminal; pid: number | undefined }>> {
-  return Promise.all(vscode.window.terminals.map(async (terminal) => ({ terminal, pid: await terminal.processId })));
+  return Promise.all(
+    vscode.window.terminals.map(async (terminal) => ({ terminal, pid: await withTimeout(terminal.processId, PID_TIMEOUT_MS) })),
+  );
 }
 
 function readJson(file: string): unknown {

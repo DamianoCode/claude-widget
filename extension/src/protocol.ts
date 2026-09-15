@@ -28,10 +28,33 @@ export interface WindowState {
 /** Starsza prośba jest nieaktualna — np. zapisana, zanim okno się otworzyło. */
 export const REQUEST_MAX_AGE_MS = 10_000;
 
-/** Ten sam katalog, którego używa widżet: obok katalogu stanu (CLAUDE_WIDGET_STATE_DIR) albo ~/.claude/widget. */
+/** Terminal, który nie wystartował, nigdy nie poda PID-u — bez limitu zapisy stanu okna stanęłyby na zawsze. */
+export const PID_TIMEOUT_MS = 1500;
+
+/**
+ * Ten sam katalog, którego używa widżet: obok katalogu stanu (CLAUDE_WIDGET_STATE_DIR) albo
+ * ~/.claude/widget. path.resolve zdejmuje końcowy ukośnik, tak jak robi to widżet.
+ */
 export function bridgeDir(env: NodeJS.ProcessEnv, home: string): string {
   const stateDir = env.CLAUDE_WIDGET_STATE_DIR;
-  return stateDir ? path.join(path.dirname(stateDir), 'vscode') : path.join(home, '.claude', 'widget', 'vscode');
+  return stateDir ? path.join(path.dirname(path.resolve(stateDir)), 'vscode') : path.join(home, '.claude', 'widget', 'vscode');
+}
+
+/** Wartość albo undefined, gdy nie przyjdzie w czasie (albo przyjdzie z błędem). */
+export function withTimeout<T>(value: PromiseLike<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    Promise.resolve(value).then(
+      (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      },
+    );
+  });
 }
 
 /** Prośba z pliku albo null, gdy jest niepoprawna albo nieaktualna. */

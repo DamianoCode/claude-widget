@@ -25,30 +25,48 @@ public static class VsCodeExtensionInstaller
         if (!File.Exists(VsixPath)) return; // uruchomienie deweloperskie — paczki nie ma
         var version = typeof(VsCodeExtensionInstaller).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0";
-        var marker = Path.Combine(paths.WidgetDir, "vscode", "installed-extension.txt");
-        if (File.Exists(marker) && File.ReadAllText(marker).Trim() == version) return;
-
-        // Bez VS Code nie zapisuje się znacznika: gdy ktoś zainstaluje je później, rozszerzenie
-        // dojdzie przy następnym starcie widżetu.
-        var clis = FindClis().ToList();
-        if (clis.Count == 0) return;
-
-        var installed = true;
-        foreach (var cli in clis)
-        {
-            installed &= Run(cli, $"--install-extension \"{VsixPath}\" --force", log, TimeSpan.FromMinutes(2));
-        }
-        if (!installed) return;
-        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-        File.WriteAllText(marker, version);
-    }
-
-    public static void Uninstall(Action<string> log)
-    {
+        // Znacznik trzyma wersję osobno dla każdego edytora: zepsuty jeden (np. nieaktualny wpis
+        // w PATH) nie może wymuszać ponownej instalacji we wszystkich przy każdym starcie. Edytor
+        // zainstalowany po widżecie dostaje rozszerzenie przy następnym starcie widżetu.
+        var marker = MarkerPath(paths);
+        var installed = ReadMarker(marker);
+        var changed = false;
         foreach (var cli in FindClis())
         {
-            Run(cli, $"--uninstall-extension {ExtensionId}", log, TimeSpan.FromSeconds(12));
+            var key = Path.GetFullPath(cli);
+            if (installed.TryGetValue(key, out var installedVersion) && installedVersion == version) continue;
+            if (!Run(cli, $"--install-extension \"{VsixPath}\" --force", log, TimeSpan.FromMinutes(2))) continue;
+            installed[key] = version;
+            changed = true;
         }
+        if (!changed) return;
+        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+        File.WriteAllLines(marker, installed.Select(entry => $"{entry.Value}\t{entry.Key}"));
+    }
+
+    public static void Uninstall(WidgetPaths paths, Action<string> log)
+    {
+        // Wszystkie edytory naraz i jeden wspólny limit — hook odinstalowania Velopacka ma 30 s.
+        var runs = FindClis()
+            .Select(cli => Task.Run(() => Run(cli, $"--uninstall-extension {ExtensionId}", log, TimeSpan.FromSeconds(20))))
+            .ToArray();
+        Task.WaitAll(runs, TimeSpan.FromSeconds(22));
+        JsonStore.Remove(MarkerPath(paths));
+    }
+
+    private static string MarkerPath(WidgetPaths paths) => Path.Combine(paths.WidgetDir, "vscode", "installed-extension.txt");
+
+    // Wiersze „wersja<TAB>ścieżka CLI”; wiersze w innym formacie (np. z wcześniejszej wersji) się pomija.
+    private static Dictionary<string, string> ReadMarker(string marker)
+    {
+        var installed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!File.Exists(marker)) return installed;
+        foreach (var line in File.ReadAllLines(marker))
+        {
+            var parts = line.Split('\t', 2);
+            if (parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0) installed[parts[1]] = parts[0];
+        }
+        return installed;
     }
 
     // CLI z PATH i z domyślnych miejsc instalacji VS Code (instalacja użytkownika i systemowa).
