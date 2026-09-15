@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/DamianoCode/claude-widget/compare/v1.1.0...v1.2.0) (2026-09-15)
+
+
+### Nowe funkcje
+
+* dźwięki i powiadomienia w widżecie, przycisk zmniejszania i zminimalizowane okna ([8689d17](https://github.com/DamianoCode/claude-widget/commit/8689d17fba68e1ff988d83c6f4f54550df6bd8ad))
+
+
+### Poprawki
+
+* **widget:** bezpieczne podłączanie do konsoli sesji ([a1b78f4](https://github.com/DamianoCode/claude-widget/commit/a1b78f44d75fd47a6b9ed8b181e746fdcf3fddc6))
+
 ## [1.1.0](https://github.com/DamianoCode/claude-widget/compare/v1.0.1...v1.1.0) (2026-09-15)
 
 
