@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/DamianoCode/claude-widget/compare/v1.2.0...v1.3.0) (2026-09-15)
+
+
+### Nowe funkcje
+
+* widżet działa przy własnej statusline bez zmiany jej wyglądu ([472434c](https://github.com/DamianoCode/claude-widget/commit/472434c6a06efe9d482a532ec1d93bb165e78158))
+
+
+### Poprawki
+
+* **statusline:** bezpieczny przekaźnik i zapis ścieżki zależny od powłoki ([22ae2a0](https://github.com/DamianoCode/claude-widget/commit/22ae2a0791e0f782eeea65e675dd447dda6ba0dd))
+
 ## [1.2.0](https://github.com/DamianoCode/claude-widget/compare/v1.1.0...v1.2.0) (2026-09-15)
 
 
