@@ -15,7 +15,10 @@ public partial class App : Application
     {
         // Instalacja/aktualizacja/odinstalowanie: Velopack woła nas z odpowiednią flagą, robimy
         // to, co trzeba, i kończymy — bez okna, bo hooki nie mogą pokazywać UI.
+        // Aktualizacja pobrana w tle instaluje się sama przy następnym uruchomieniu (np. po restarcie
+        // komputera); pozycja w menu zasobnika robi to od razu.
         VelopackApp.Build()
+            .SetAutoApplyOnStartup(true)
             .OnAfterInstallFastCallback(_ => InstallHooks.AfterInstallOrUpdate(isFirstInstall: true))
             .OnAfterUpdateFastCallback(_ => InstallHooks.AfterInstallOrUpdate(isFirstInstall: false))
             .OnBeforeUninstallFastCallback(_ => InstallHooks.BeforeUninstall())

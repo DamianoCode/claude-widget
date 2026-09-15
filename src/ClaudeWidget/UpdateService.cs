@@ -5,8 +5,9 @@ namespace ClaudeWidget;
 
 /// <summary>
 /// Sprawdza aktualizacje z GitHub Releases, gdy widżet jest zainstalowany przez Velopack (dev runy
-/// nigdy nie sprawdzają). Pobiera po cichu; restart z zastosowaniem aktualizacji zależy od kliknięcia
-/// w menu zasobnika, żeby nie przerywać pracy.
+/// nigdy nie sprawdzają). Pobiera po cichu i nie przerywa pracy: pobrana wersja instaluje się sama
+/// przy następnym uruchomieniu widżetu (VelopackApp.SetAutoApplyOnStartup), a pozycja w menu
+/// zasobnika pozwala zrobić to od razu.
 /// </summary>
 public sealed class UpdateService
 {

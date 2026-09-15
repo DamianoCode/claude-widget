@@ -1,29 +1,48 @@
 name: release
 
-# Wydanie: git tag v1.2.3 && git push origin v1.2.3. Powstaje wydanie na GitHubie z Setup.exe
-# (instalacja bez uprawnień administratora) i paczkami, z których zainstalowane widżety same się
-# aktualizują — także przyrostowo, bo poprzednie wydanie jest pobierane przed pakowaniem.
+# Wydania prowadzi release-please. Po każdym scaleniu do main aktualizuje PR „chore: wydanie X.Y.Z”
+# z numerem wersji (z typów commitów: fix → poprawka, feat → nowa funkcja, feat! → nowa główna)
+# i CHANGELOG-iem. Scalenie tego PR tworzy tag i wydanie, a job `build` w tym samym przebiegu
+# buduje je i dokłada Setup.exe oraz paczki, z których zainstalowane widżety same się aktualizują.
+# Jeden workflow, bo tag utworzony tokenem Actions nie uruchamia innych workflow.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  release:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
     runs-on: windows-latest
     env:
       REPO_URL: https://github.com/${{ github.repository }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG: ${{ needs.release-please.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Version from tag
-        shell: pwsh
-        run: '"VERSION=$("${{ github.ref_name }}".TrimStart("v"))" >> $env:GITHUB_ENV'
       - run: dotnet test ClaudeWidget.slnx -c Release
       - name: Publish widget and hook
         shell: pwsh
@@ -33,9 +52,15 @@ jobs:
           # Hook Native AOT obok widżetu: settings.json wskazuje na current\ClaudeWidgetHook.exe.
           dotnet publish src/ClaudeWidget.Hook -c Release -r win-x64 -p:Version=$env:VERSION -o publish
       - run: dotnet tool install -g vpk --version 1.2.0
+      - name: Previous release for delta updates
+        # Paczka przyrostowa to tylko oszczędność pobierania — bez poprzedniego wydania powstaje
+        # sama pełna paczka, więc brak poprzedniego wydania nie może zablokować nowego.
+        continue-on-error: true
+        shell: pwsh
+        run: vpk download github --repoUrl $env:REPO_URL --token $env:GH_TOKEN
       - name: Pack and upload
         shell: pwsh
         run: |
-          vpk download github --repoUrl $env:REPO_URL --token $env:GH_TOKEN
           vpk pack --packId ClaudeWidget --packVersion $env:VERSION --packDir publish --mainExe ClaudeWidget.exe --packTitle "Claude Code widget" --packAuthors DamianoCode --icon src/ClaudeWidget/Assets/widget.ico
-          vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN --publish --tag ${{ github.ref_name }} --releaseName "Claude Code widget $env:VERSION"
+          # Wydanie z CHANGELOG-iem już utworzył release-please; --merge dokłada do niego pliki.
+          vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN --publish --merge --tag $env:TAG --releaseName "Claude Code widget $env:VERSION"
