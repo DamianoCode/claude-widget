@@ -39,13 +39,14 @@ public partial class MainWindow : Window
     private const uint HotkeyKeyCode = 0x4B; // K
     private const string HotkeyLabel = "Ctrl+Alt+K";
     private const int AgentsIdleSeconds = 20;
+    private const string IdleBorder = "#47FFFFFF";
     private static readonly TimeSpan AgentsActiveInterval = TimeSpan.FromSeconds(4);
 
     private static readonly (string Key, string On, string Off)[] LightPalette =
     [
-        ("czeka", "#FF5A4E", "#2B1614"),
-        ("pracuje", "#FFB224", "#2B2211"),
-        ("gotowe", "#3DD68C", "#11261B"),
+        ("czeka", "#FF5A4E", "#3D1D1A"),
+        ("pracuje", "#FFB224", "#3B2E15"),
+        ("gotowe", "#3DD68C", "#173324"),
     ];
 
     private readonly WidgetPaths _paths;
@@ -219,7 +220,8 @@ public partial class MainWindow : Window
 
         // Obramowanie ostrzega przed końcem limitu także w widoku mini, bez najeżdżania.
         var warn = fiveView.Warn == "#FF5A4E" || weekView.Warn == "#FF5A4E" ? "#FF5A4E" : fiveView.Warn ?? weekView.Warn;
-        var borderBrush = warn is not null ? Brushes.Brush("#B3" + warn[1..]) : Brushes.Brush("#14FFFFFF");
+        // Bez ostrzeżenia ramka zostaje wyraźna: przy zgaszonych światłach ciemna karta ginęła na ciemnej tapecie.
+        var borderBrush = Brushes.Brush(warn is not null ? "#B3" + warn[1..] : IdleBorder);
         Card.BorderBrush = borderBrush;
         Mini.BorderBrush = borderBrush;
         Mini.BorderThickness = new Thickness(warn is not null ? 1.5 : 1);

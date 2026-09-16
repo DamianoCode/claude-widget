@@ -56,7 +56,7 @@
     </Style>
   </Window.Resources>
   <Grid Margin="24">
-    <Border x:Name="Card" Width="148" Background="#202020" BorderBrush="#14FFFFFF" BorderThickness="1"
+    <Border x:Name="Card" Width="148" Background="#202020" BorderBrush="#47FFFFFF" BorderThickness="1"
             CornerRadius="14" Padding="10,10,10,12" Visibility="Collapsed">
       <Border.Effect>
         <DropShadowEffect BlurRadius="30" ShadowDepth="6" Direction="270" Opacity="0.55" Color="Black"/>
@@ -99,7 +99,7 @@
         <TextBlock x:Name="Freshness" FontSize="10.5" Foreground="#626262" HorizontalAlignment="Center" Margin="0,2,0,0"/>
       </StackPanel>
     </Border>
-    <Border x:Name="Mini" Width="34" Background="#202020" BorderBrush="#14FFFFFF" BorderThickness="1"
+    <Border x:Name="Mini" Width="34" Background="#202020" BorderBrush="#47FFFFFF" BorderThickness="1"
             CornerRadius="17" Padding="0,5,0,3" Visibility="Collapsed">
       <Border.Effect>
         <DropShadowEffect BlurRadius="20" ShadowDepth="4" Direction="270" Opacity="0.5" Color="Black"/>
