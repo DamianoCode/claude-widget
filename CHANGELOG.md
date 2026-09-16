@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/DamianoCode/claude-widget/compare/v1.3.0...v1.4.0) (2026-09-16)
+
+
+### Nowe funkcje
+
+* wersja i ręczne sprawdzanie aktualizacji w menu zasobnika ([eb4f3de](https://github.com/DamianoCode/claude-widget/commit/eb4f3de7345c0e1d52a73eb0bd545abcedca0770))
+* wyraźniejsza ramka i zgaszone światła, gdy nic się nie dzieje ([f0ab76c](https://github.com/DamianoCode/claude-widget/commit/f0ab76ce008784244b6483f78a0dd9801909a995))
+
+
+### Poprawki
+
+* widżet nie zostaje pod innymi oknami „zawsze na wierzchu” ([cb75118](https://github.com/DamianoCode/claude-widget/commit/cb75118fc4282ec2afbf3d50e89bde9ff83ca3c4))
+
 ## [1.3.0](https://github.com/DamianoCode/claude-widget/compare/v1.2.0...v1.3.0) (2026-09-15)
 
 
