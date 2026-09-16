@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private const string HotkeyLabel = "Ctrl+Alt+K";
     private const int AgentsIdleSeconds = 20;
     private const string IdleBorder = "#47FFFFFF";
+    private const string CheckUpdatesLabel = "Sprawdź aktualizacje";
     private static readonly TimeSpan AgentsActiveInterval = TimeSpan.FromSeconds(4);
 
     private static readonly (string Key, string On, string Off)[] LightPalette =
@@ -67,7 +68,7 @@ public partial class MainWindow : Window
     private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!;
     private Style _rowStyle = null!, _waitingRowStyle = null!;
     private MenuItem _sizeItem = null!;
-    private ToolStripMenuItem _trayShow = null!, _traySize = null!, _trayAutostart = null!, _trayUpdateItem = null!;
+    private ToolStripMenuItem _trayShow = null!, _traySize = null!, _trayAutostart = null!, _trayUpdateItem = null!, _trayCheckItem = null!;
     private NotifyIcon _tray = null!;
     private Icon? _trayIcon;
     private string _trayIconKey = "";
@@ -753,6 +754,9 @@ public partial class MainWindow : Window
 
         _tray = new NotifyIcon();
         var trayMenu = new ContextMenuStrip();
+        // Wersja jako nieklikalny nagłówek: tooltip ikony ma limit 63 znaków i pokazuje stan sesji.
+        trayMenu.Items.Add(new ToolStripMenuItem($"Claude Code widget {_updates.CurrentVersion}") { Enabled = false });
+        trayMenu.Items.Add(new ToolStripSeparator());
         _trayShow = (ToolStripMenuItem)trayMenu.Items.Add("Ukryj widżet");
         _trayShow.Click += (_, _) => Safely("zasobnik: pokaż/ukryj", () => { _userHidden = !_userHidden; UpdateVisibility(); });
         _traySize = (ToolStripMenuItem)trayMenu.Items.Add("Widok pełny");
@@ -769,6 +773,13 @@ public partial class MainWindow : Window
         _trayNotifications.Click += (_, _) => Safely("zasobnik: powiadomienia", () => SetAlertOptions(_notifier.SoundsEnabled, !_notifier.NotificationsEnabled));
         trayMenu.Items.Add(_trayNotifications);
         trayMenu.Items.Add(new ToolStripSeparator());
+        // Uruchomienie deweloperskie nie ma skąd się aktualizować — pozycja jest, ale wyszarzona.
+        _trayCheckItem = new ToolStripMenuItem(_updates.IsInstalled ? CheckUpdatesLabel : "Sprawdź aktualizacje (tylko po instalacji)")
+        {
+            Enabled = _updates.IsInstalled,
+        };
+        _trayCheckItem.Click += async (_, _) => await Safely2("zasobnik: sprawdzanie aktualizacji", CheckUpdatesManuallyAsync);
+        trayMenu.Items.Add(_trayCheckItem);
         _trayUpdateItem = new ToolStripMenuItem("Zaktualizuj i uruchom ponownie") { Visible = false };
         _trayUpdateItem.Click += (_, _) => Safely("aktualizacja", () =>
         {
@@ -794,7 +805,37 @@ public partial class MainWindow : Window
         {
             _trayUpdateItem.Text = $"Zaktualizuj do {_updates.PendingVersion} i uruchom ponownie";
             _trayUpdateItem.Visible = true;
+            // Pobrana wersja nie zmieni się do restartu — kolejne sprawdzanie nic by nie dało.
+            _trayCheckItem.Visible = false;
         });
+    }
+
+    // Ręczne sprawdzenie: nie trzeba czekać do 6 h na sprawdzenie okresowe. Wynik w dymku, bo menu
+    // zamyka się po kliknięciu; restartu nie robi samo — to nadal osobna pozycja w menu.
+    private async Task CheckUpdatesManuallyAsync()
+    {
+        _trayCheckItem.Enabled = false;
+        _trayCheckItem.Text = "Sprawdzam aktualizacje…";
+        UpdateCheckResult result;
+        try
+        {
+            result = await _updates.CheckAsync(message => WidgetLog.Write(_paths, message));
+        }
+        finally
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                _trayCheckItem.Enabled = true;
+                _trayCheckItem.Text = CheckUpdatesLabel;
+            });
+        }
+        var (text, icon) = result switch
+        {
+            UpdateCheckResult.Ready => ($"Pobrano wersję {_updates.PendingVersion}. Zainstaluje się przy następnym uruchomieniu albo od razu z menu ikony.", System.Windows.Forms.ToolTipIcon.Info),
+            UpdateCheckResult.UpToDate => ($"Masz najnowszą wersję ({_updates.CurrentVersion}).", System.Windows.Forms.ToolTipIcon.Info),
+            _ => ("Nie udało się sprawdzić aktualizacji. Szczegóły w widget.log.", System.Windows.Forms.ToolTipIcon.Warning),
+        };
+        await Dispatcher.InvokeAsync(() => _tray.ShowBalloonTip(5000, "Claude Code widget", text, icon));
     }
 
     // --- zdarzenia okna -------------------------------------------------------------------------

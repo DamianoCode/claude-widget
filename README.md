@@ -28,8 +28,9 @@ Wymagania: Windows 10 lub 11 (x64) i Claude Code. Limity konta pokazują się w 
 
 **Aktualizacje** przychodzą same: widżet przy starcie i co kilka godzin sprawdza nowe wydanie,
 pobiera je w tle (zwykle jako małą paczkę różnicową) i instaluje przy następnym uruchomieniu,
-np. po restarcie komputera. Kto chce od razu, wybiera w menu ikony w zasobniku „Zaktualizuj do …
-i uruchom ponownie”.
+np. po restarcie komputera. Kto nie chce czekać, wybiera w menu ikony w zasobniku „Sprawdź
+aktualizacje”, a po pobraniu „Zaktualizuj do … i uruchom ponownie”. Zainstalowaną wersję
+widać na górze tego menu.
 
 **Odinstalowanie:** Ustawienia Windows → Aplikacje → *Claude Code widget*. Hooki i statusline
 widżetu znikają z `settings.json`; stan w `~\.claude\widget` zostaje.
@@ -77,7 +78,7 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 | przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej |
 | „–” w rogu karty / „˅” pod światłami w mini | zmniejsza do widoku mini / rozwija do pełnego (widać je po najechaniu) |
 | prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, przyklejenie do krawędzi, ukrycie, zamknięcie |
-| ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też autostart i aktualizację |
+| ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też wersję, autostart i aktualizacje |
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu
 albo przez około 3 s patrzysz na jej okno terminala. Widżet chowa się sam, gdy na jego monitorze
