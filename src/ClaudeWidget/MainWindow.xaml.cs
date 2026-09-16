@@ -39,13 +39,14 @@ public partial class MainWindow : Window
     private const uint HotkeyKeyCode = 0x4B; // K
     private const string HotkeyLabel = "Ctrl+Alt+K";
     private const int AgentsIdleSeconds = 20;
+    private const string IdleBorder = "#47FFFFFF";
     private static readonly TimeSpan AgentsActiveInterval = TimeSpan.FromSeconds(4);
 
     private static readonly (string Key, string On, string Off)[] LightPalette =
     [
-        ("czeka", "#FF5A4E", "#2B1614"),
-        ("pracuje", "#FFB224", "#2B2211"),
-        ("gotowe", "#3DD68C", "#11261B"),
+        ("czeka", "#FF5A4E", "#3D1D1A"),
+        ("pracuje", "#FFB224", "#3B2E15"),
+        ("gotowe", "#3DD68C", "#173324"),
     ];
 
     private readonly WidgetPaths _paths;
@@ -85,7 +86,7 @@ public partial class MainWindow : Window
     private bool _agentsRunning;
     private DateTime _agentsStartedAt = DateTime.MinValue;
     private string _size = "mini";
-    private IntPtr _hwnd;
+    private IntPtr _hwnd, _lastForeground;
     private bool _pinned, _userHidden, _fullscreenHidden;
     private string _panelSignature = "";
     private string _lastError = "";
@@ -219,7 +220,8 @@ public partial class MainWindow : Window
 
         // Obramowanie ostrzega przed końcem limitu także w widoku mini, bez najeżdżania.
         var warn = fiveView.Warn == "#FF5A4E" || weekView.Warn == "#FF5A4E" ? "#FF5A4E" : fiveView.Warn ?? weekView.Warn;
-        var borderBrush = warn is not null ? Brushes.Brush("#B3" + warn[1..]) : Brushes.Brush("#14FFFFFF");
+        // Bez ostrzeżenia ramka zostaje wyraźna: przy zgaszonych światłach ciemna karta ginęła na ciemnej tapecie.
+        var borderBrush = Brushes.Brush(warn is not null ? "#B3" + warn[1..] : IdleBorder);
         Card.BorderBrush = borderBrush;
         Mini.BorderBrush = borderBrush;
         Mini.BorderThickness = new Thickness(warn is not null ? 1.5 : 1);
@@ -649,13 +651,20 @@ public partial class MainWindow : Window
     {
         var hidden = _userHidden || _fullscreenHidden;
         if (hidden && IsVisible) { ClosePanel(); Hide(); }
-        else if (!hidden && !IsVisible) Show();
+        else if (!hidden && !IsVisible)
+        {
+            // Show nie zmienia kolejności okien — widżet wróciłby pod to, co w międzyczasie weszło na wierzch.
+            Show();
+            NativeMethods.BringToTopmost(_hwnd);
+        }
         _trayShow.Text = _userHidden ? "Pokaż widżet" : "Ukryj widżet";
     }
 
     private void UpdateFullscreen()
     {
         var foreground = NativeMethods.GetForegroundWindow();
+        var foregroundChanged = foreground != _lastForeground;
+        _lastForeground = foreground;
         var fullscreen = false;
         if (foreground != IntPtr.Zero && foreground != _hwnd &&
             NativeMethods.ClassOf(foreground) is not ("Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"))
@@ -666,6 +675,13 @@ public partial class MainWindow : Window
         {
             _fullscreenHidden = fullscreen;
             UpdateVisibility();
+        }
+        // Po zmianie aktywnego okna widżet wraca nad inne okna „zawsze na wierzchu” — np. nad Pulpit
+        // zdalny, który przed chwilą zajmował jego monitor. Tylko przy zmianie, żeby nie przykrywać
+        // co sekundę menu czy okna, które ktoś celowo trzyma nad widżetem; własne okna (panel) pomija.
+        if (foregroundChanged && IsVisible && NativeMethods.ProcessOf(foreground) != Environment.ProcessId)
+        {
+            NativeMethods.BringToTopmost(_hwnd);
         }
     }
 
