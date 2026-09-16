@@ -85,7 +85,7 @@ public partial class MainWindow : Window
     private bool _agentsRunning;
     private DateTime _agentsStartedAt = DateTime.MinValue;
     private string _size = "mini";
-    private IntPtr _hwnd;
+    private IntPtr _hwnd, _lastForeground;
     private bool _pinned, _userHidden, _fullscreenHidden;
     private string _panelSignature = "";
     private string _lastError = "";
@@ -649,13 +649,20 @@ public partial class MainWindow : Window
     {
         var hidden = _userHidden || _fullscreenHidden;
         if (hidden && IsVisible) { ClosePanel(); Hide(); }
-        else if (!hidden && !IsVisible) Show();
+        else if (!hidden && !IsVisible)
+        {
+            // Show nie zmienia kolejności okien — widżet wróciłby pod to, co w międzyczasie weszło na wierzch.
+            Show();
+            NativeMethods.BringToTopmost(_hwnd);
+        }
         _trayShow.Text = _userHidden ? "Pokaż widżet" : "Ukryj widżet";
     }
 
     private void UpdateFullscreen()
     {
         var foreground = NativeMethods.GetForegroundWindow();
+        var foregroundChanged = foreground != _lastForeground;
+        _lastForeground = foreground;
         var fullscreen = false;
         if (foreground != IntPtr.Zero && foreground != _hwnd &&
             NativeMethods.ClassOf(foreground) is not ("Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"))
@@ -666,6 +673,13 @@ public partial class MainWindow : Window
         {
             _fullscreenHidden = fullscreen;
             UpdateVisibility();
+        }
+        // Po zmianie aktywnego okna widżet wraca nad inne okna „zawsze na wierzchu” — np. nad Pulpit
+        // zdalny, który przed chwilą zajmował jego monitor. Tylko przy zmianie, żeby nie przykrywać
+        // co sekundę menu czy okna, które ktoś celowo trzyma nad widżetem; własne okna (panel) pomija.
+        if (foregroundChanged && IsVisible && NativeMethods.ProcessOf(foreground) != Environment.ProcessId)
+        {
+            NativeMethods.BringToTopmost(_hwnd);
         }
     }
 
