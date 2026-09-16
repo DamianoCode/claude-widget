@@ -64,6 +64,17 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr icon);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private const uint SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpNoActivate = 0x0010, SwpNoOwnerZOrder = 0x0200;
+
+    // Okna „zawsze na wierzchu” układają się między sobą w kolejności aktywacji: pełnoekranowy Pulpit
+    // zdalny czy menedżer zadań przykrywają widżet, dopóki ten sam nie wróci na szczyt tej warstwy.
+    public static void BringToTopmost(IntPtr hwnd) =>
+        SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int size);
 
