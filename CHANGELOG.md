@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/DamianoCode/claude-widget/compare/v1.6.0...v1.6.1) (2026-09-17)
+
+
+### Poprawki
+
+* tura przerwana Esc nie zostawia sesji jako pracującej ([6e34a13](https://github.com/DamianoCode/claude-widget/commit/6e34a135d7add329bc7de1bc5a72041375a255fe))
+
 ## [1.6.0](https://github.com/DamianoCode/claude-widget/compare/v1.5.0...v1.6.0) (2026-09-17)
 
 
