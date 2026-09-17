@@ -75,9 +75,10 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 | kliknięcie sygnalizatora | przypina panel; drugie kliknięcie go zamyka |
 | kliknięcie sesji w panelu | przenosi do okna jej terminala i oznacza wynik jako przejrzany |
 | **Ctrl+Alt+K** (zmienisz w ustawieniach) | przenosi do sesji, która najdłużej czeka na Ciebie (a gdy żadna — do najnowszego wyniku) |
-| przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej |
+| przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej (u góry i u dołu jako wyspa) |
 | „–” w rogu karty / „˅” pod światłami w mini | zmniejsza do widoku mini / rozwija do pełnego (widać je po najechaniu) |
-| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, wyciszenie na czas, ustawienia, przyklejenie do krawędzi, ukrycie, zamknięcie |
+| pinezka / „˄” na wyspie | zostawia wyspę rozwiniętą / zwija ją z powrotem, gdy nie najeżdżasz |
+| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, wyciszenie na czas, ustawienia, przyklejenie do wybranej krawędzi, ukrycie, zamknięcie |
 | ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też wersję, autostart i aktualizacje |
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu
@@ -85,6 +86,15 @@ albo przez około 3 s patrzysz na jej okno terminala. Widżet chowa się sam, gd
 działa coś na pełnym ekranie (prezentacja, film).
 
 Ctrl+Alt+C byłoby naturalniejsze, ale na polskiej klawiaturze to AltGr+C, czyli „ć”.
+
+### Krawędzie ekranu i wyspa
+
+Widżet przykleja się do dowolnej krawędzi — przeciągnięciem albo z menu „Przyklej do”. Po bokach
+jest pionowy, jak dotąd. U góry i u dołu (nad paskiem zadań) staje się poziomą **wyspą**: w spoczynku
+to tylko trzy światła, a po najechaniu rozwija się w pasek ze stanem najpilniejszej sesji i limitami,
+z panelem sesji pod nią (u dołu — nad nią). Wyspę przesuwa się wzdłuż krawędzi; w widoku pełnym
+zostaje rozwinięta. Karta upuszczona w rogu ekranu zostaje pionowa i przykleja się do boku.
+Po zmianie rozdzielczości albo paska zadań przyklejony widżet wraca na swoją krawędź.
 
 ### Dźwięki i powiadomienia
 
