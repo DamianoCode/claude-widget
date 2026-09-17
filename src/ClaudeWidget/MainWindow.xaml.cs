@@ -35,6 +35,9 @@ public partial class MainWindow : Window, ISettingsHost
     private const double ShadowMargin = 24;
     private const double SnapDistance = 24;
     private const long SeenAfterMs = 3000;
+    /// <summary>Szerokość części wyspy ze stanem i limitami (patrz MainWindow.xaml).</summary>
+    public const double IslandExtraWidth = 394;
+    private const double PanelMargin = 16;
     private const string PanelHintBase = "Kliknij sesję, aby przejść do jej terminala. Kliknij sygnalizator, aby przypiąć panel.";
     private const int AgentsIdleSeconds = 20;
     private const string IdleBorder = "#47FFFFFF";
@@ -64,10 +67,11 @@ public partial class MainWindow : Window, ISettingsHost
     private readonly Dictionary<string, RadialGradientBrush> _litFill = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _fullGlow = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _miniGlow = [];
+    private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _islandGlow = [];
     private readonly List<(Dictionary<string, Ellipse> Ellipses, Dictionary<string, TextBlock> Counts, Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> Glow)> _lightSets = [];
     private readonly Dictionary<string, long> _dwell = [];
 
-    private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!;
+    private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!, _i5h = null!, _iWeek = null!;
     private Style _rowStyle = null!, _waitingRowStyle = null!;
     private MenuItem _sizeItem = null!;
     private ToolStripMenuItem _trayShow = null!, _traySize = null!, _trayAutostart = null!, _trayUpdateItem = null!, _trayCheckItem = null!;
@@ -90,6 +94,11 @@ public partial class MainWindow : Window, ISettingsHost
     private bool _agentsRunning;
     private DateTime _agentsStartedAt = DateTime.MinValue;
     private string _size = "mini";
+    private DockEdge _dock;
+    // Środek wyspy wzdłuż krawędzi; null — środek obszaru roboczego.
+    private double? _anchor;
+    private bool _islandExpanded;
+    private readonly List<(DockEdge Edge, MenuItem Item, ToolStripMenuItem TrayItem)> _dockItems = [];
     private IntPtr _hwnd, _lastForeground;
     private bool _pinned, _userHidden, _fullscreenHidden;
     private string _panelSignature = "";
@@ -131,6 +140,7 @@ public partial class MainWindow : Window, ISettingsHost
             _litFill[key] = Brushes.LitFill(color);
             _fullGlow[key] = Brushes.Glow(color, 26, 0.9);
             _miniGlow[key] = Brushes.Glow(color, 14, 0.9);
+            _islandGlow[key] = Brushes.Glow(color, 16, 0.9);
         }
 
         _lightSets.Add((
@@ -141,6 +151,10 @@ public partial class MainWindow : Window, ISettingsHost
             new() { ["czeka"] = MiniCzeka, ["pracuje"] = MiniPracuje, ["gotowe"] = MiniGotowe },
             new() { ["czeka"] = MiniCountCzeka, ["pracuje"] = MiniCountPracuje, ["gotowe"] = MiniCountGotowe },
             _miniGlow));
+        _lightSets.Add((
+            new() { ["czeka"] = IslandCzeka, ["pracuje"] = IslandPracuje, ["gotowe"] = IslandGotowe },
+            new() { ["czeka"] = IslandCountCzeka, ["pracuje"] = IslandCountPracuje, ["gotowe"] = IslandCountGotowe },
+            _islandGlow));
     }
 
     private void BuildMeters()
@@ -153,6 +167,10 @@ public partial class MainWindow : Window, ISettingsHost
         _p5h = new MeterControl("Limit 5 h", PanelInner, 12, "#C8C8C8", 10);
         _pWeek = new MeterControl("Limit tygodniowy", PanelInner, 12, "#C8C8C8", 0);
         foreach (var meter in new[] { _p5h, _pWeek }) PanelLimits.Children.Add(meter.Root);
+
+        _i5h = new MeterControl("5 h", 80);
+        _iWeek = new MeterControl("tydz.", 80);
+        foreach (var meter in new[] { _i5h, _iWeek }) IslandMeters.Children.Add(meter.Root);
     }
 
     // --- odświeżanie widoku -------------------------------------------------------------------
@@ -207,6 +225,9 @@ public partial class MainWindow : Window, ISettingsHost
             StatusLabel.Foreground = Brushes.Brush(focus.Kind == SessionKinds.Idle ? "#8A8A8A" : kindInfo.Color);
             StatusDetail.Text = focus.Kind == SessionKinds.Idle ? "wyniki przejrzane" : SessionFormatting.GetDetail(focus, nowMs);
             SessionLine.Text = $"{focus.Project} · {Formatting.FormatSessions(_sessions.Count)}";
+            IslandStatus.Text = $"{kindInfo.Label} · {focus.Project}";
+            IslandStatus.Foreground = StatusLabel.Foreground;
+            IslandDetail.Text = StatusDetail.Text;
         }
         else
         {
@@ -214,10 +235,15 @@ public partial class MainWindow : Window, ISettingsHost
             StatusLabel.Foreground = Brushes.Brush("#8A8A8A");
             StatusDetail.Text = "uruchom Claude Code";
             SessionLine.Text = "";
+            IslandStatus.Text = StatusLabel.Text;
+            IslandStatus.Foreground = StatusLabel.Foreground;
+            IslandDetail.Text = StatusDetail.Text;
         }
 
         _m5h.Set(fiveView.Pct, fiveView.Note, fiveView.Color);
         _mWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
+        _i5h.Set(fiveView.Pct, fiveView.Note, fiveView.Color);
+        _iWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
         var contextPct = focus?.ContextPct;
         _mContext.Set(contextPct, SessionFormatting.GetContextNote(focus), contextPct >= 80 ? "#FFB224" : "#BDBDBD");
         Freshness.Text = Formatting.GetFreshnessText(measuredAt);
@@ -228,6 +254,7 @@ public partial class MainWindow : Window, ISettingsHost
         var borderBrush = Brushes.Brush(warn is not null ? "#B3" + warn[1..] : IdleBorder);
         Card.BorderBrush = borderBrush;
         Mini.BorderBrush = borderBrush;
+        Island.BorderBrush = borderBrush;
         Mini.BorderThickness = new Thickness(warn is not null ? 1.5 : 1);
 
         UpdateTray(counts);
@@ -279,7 +306,7 @@ public partial class MainWindow : Window, ISettingsHost
     {
         if (on == _pulsing) return;
         _pulsing = on;
-        foreach (var light in new[] { LightCzeka, MiniCzeka })
+        foreach (var light in new[] { LightCzeka, MiniCzeka, IslandCzeka })
         {
             if (on)
             {
@@ -656,7 +683,14 @@ public partial class MainWindow : Window, ISettingsHost
             return;
         }
         if (loaded.WithoutPlacement() == _config.WithoutPlacement()) return;
-        ApplyConfig(loaded with { Left = _config.Left, Top = _config.Top, Size = _config.Size }, save: false);
+        ApplyConfig(loaded with
+        {
+            Left = _config.Left,
+            Top = _config.Top,
+            Size = _config.Size,
+            Dock = _config.Dock,
+            DockAnchor = _config.DockAnchor,
+        }, save: false);
         _settingsWindow?.Refresh();
     }
 
@@ -712,26 +746,99 @@ public partial class MainWindow : Window, ISettingsHost
 
     // --- rozmiar, położenie, widoczność ----------------------------------------------------------
 
-    private Border ActiveCard => _size == "mini" ? Mini : Card;
+    private Border ActiveCard => Docking.IsHorizontal(_dock) ? Island : _size == "mini" ? Mini : Card;
 
-    private void SetSize(string size, bool keepRightEdge)
+    private void SetSize(string size, bool keepRightEdge, bool animate = false)
     {
         var right = Left + ActualWidth;
         _size = size;
-        Card.Visibility = size == "mini" ? Visibility.Collapsed : Visibility.Visible;
-        Mini.Visibility = size == "mini" ? Visibility.Visible : Visibility.Collapsed;
-        Panel.PlacementTarget = ActiveCard;
         var label = size == "mini" ? "Widok pełny" : "Widok mini";
         _sizeItem.Header = label;
         _traySize.Text = label;
-        UpdateLayout();
-        if (keepRightEdge) Left = right - ActualWidth;
+        ApplyLayout(animate);
+        // Swobodna karta rośnie w lewo, jak dotąd; przyklejoną ustawia ApplyLayout.
+        if (keepRightEdge && _dock == DockEdge.None) Left = right - ActualWidth;
     }
 
     private void SwitchSize()
     {
-        ClosePanel();
-        SetSize(_size == "mini" ? "full" : "mini", true);
+        ClosePanel(collapseIsland: false);
+        SetSize(_size == "mini" ? "full" : "mini", true, animate: true);
+        SaveSettings();
+    }
+
+    // Który widok widać (karta, mini, wyspa), jak wygląda wyspa przy danej krawędzi i gdzie stoi okno.
+    private void ApplyLayout(bool animate = false)
+    {
+        var horizontal = Docking.IsHorizontal(_dock);
+        Card.Visibility = !horizontal && _size == "full" ? Visibility.Visible : Visibility.Collapsed;
+        Mini.Visibility = !horizontal && _size == "mini" ? Visibility.Visible : Visibility.Collapsed;
+        Island.Visibility = horizontal ? Visibility.Visible : Visibility.Collapsed;
+        if (horizontal)
+        {
+            // Wyspa „wyrasta” z krawędzi: płaska i bez obramowania od jej strony, cień w stronę ekranu.
+            var top = _dock == DockEdge.Top;
+            Island.CornerRadius = top ? new CornerRadius(0, 0, 16, 16) : new CornerRadius(16, 16, 0, 0);
+            Island.BorderThickness = top ? new Thickness(1, 0, 1, 1) : new Thickness(1, 1, 1, 0);
+            IslandShadow.Direction = top ? 270 : 90;
+            var full = _size == "full";
+            IslandSizeButton.Content = full ? (top ? "\uE70E" : "\uE70D") : "\uE718";
+            IslandSizeButton.ToolTip = full ? "Zwijaj wyspę, gdy nie najeżdżasz" : "Zostaw wyspę rozwiniętą";
+            SetIslandExpanded(full || Panel.IsOpen, animate);
+        }
+        Panel.PlacementTarget = ActiveCard;
+        foreach (var (edge, item, trayItem) in _dockItems) item.IsChecked = trayItem.Checked = edge == _dock;
+        UpdateLayout();
+        PlaceDocked();
+    }
+
+    // Wyspa rozwija się tylko w szerz; okno trzyma przy tym jej środek (PlaceDocked po zmianie rozmiaru).
+    private void SetIslandExpanded(bool expand, bool animate)
+    {
+        var width = expand ? IslandExtraWidth : 0;
+        if (!animate)
+        {
+            _islandExpanded = expand;
+            IslandExtra.BeginAnimation(WidthProperty, null);
+            IslandExtra.BeginAnimation(OpacityProperty, null);
+            IslandExtra.Width = width;
+            IslandExtra.Opacity = expand ? 1 : 0;
+            return;
+        }
+        if (_islandExpanded == expand) return;
+        _islandExpanded = expand;
+        var duration = new Duration(TimeSpan.FromMilliseconds(expand ? 200 : 150));
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        IslandExtra.BeginAnimation(WidthProperty, new System.Windows.Media.Animation.DoubleAnimation(width, duration) { EasingFunction = ease });
+        IslandExtra.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(expand ? 1 : 0, duration));
+    }
+
+    // Obszar roboczy monitora, na którym stoi widżet, w jednostkach WPF.
+    private Box WorkArea()
+    {
+        var area = System.Windows.Forms.Screen.FromHandle(_hwnd).WorkingArea;
+        var scale = DeviceScale();
+        return new Box(area.Left / scale, area.Top / scale, area.Width / scale, area.Height / scale);
+    }
+
+    private double DeviceScale() => PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1;
+
+    // Widoczna karta bez marginesu na cień.
+    private Box CardBox() => new(Left + ShadowMargin, Top + ShadowMargin, ActualWidth - 2 * ShadowMargin, ActualHeight - 2 * ShadowMargin);
+
+    private void PlaceDocked()
+    {
+        if (_dock == DockEdge.None || _hwnd == IntPtr.Zero) return;
+        var card = CardBox();
+        (Left, Top) = Docking.Place(_dock, card.Width, card.Height, WorkArea(), ShadowMargin, card.X, card.Y, _anchor);
+    }
+
+    private void DockTo(DockEdge edge)
+    {
+        ClosePanel(collapseIsland: false);
+        _dock = edge;
+        _anchor = null;
+        ApplyLayout();
         SaveSettings();
     }
 
@@ -739,29 +846,78 @@ public partial class MainWindow : Window, ISettingsHost
     {
         // Karta 8 px od prawej krawędzi obszaru roboczego; okno jest szersze o margines na cień.
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth + ShadowMargin - 8;
+        _dock = DockEdge.Right;
+        _anchor = null;
+        ApplyLayout();
+        Left = area.Right - ActualWidth + ShadowMargin - Docking.Gap;
         Top = area.Top + 120;
     }
 
-    private void InvokeSnap()
+    // Po upuszczeniu: przy krawędzi widżet się do niej przykleja (u góry i u dołu jako wyspa),
+    // gdzie indziej zostaje swobodny i pionowy.
+    private void SnapAfterDrag()
     {
-        var screen = System.Windows.Forms.Screen.FromHandle(_hwnd);
-        var scale = PresentationSource.FromVisual(this)!.CompositionTarget!.TransformToDevice.M11;
-        var area = screen.WorkingArea;
-        double left = area.Left / scale, top = area.Top / scale, right = area.Right / scale, bottom = area.Bottom / scale;
-        var cardLeft = Left + ShadowMargin;
-        var cardRight = Left + ActualWidth - ShadowMargin;
-        var cardTop = Top + ShadowMargin;
-        var cardBottom = Top + ActualHeight - ShadowMargin;
-        if (Math.Abs(right - cardRight) < SnapDistance) Left = right - 8 - ActualWidth + ShadowMargin;
-        else if (Math.Abs(cardLeft - left) < SnapDistance) Left = left + 8 - ShadowMargin;
-        if (Math.Abs(bottom - cardBottom) < SnapDistance) Top = bottom - 8 - ActualHeight + ShadowMargin;
-        else if (Math.Abs(cardTop - top) < SnapDistance) Top = top + 8 - ShadowMargin;
+        var card = CardBox();
+        var area = WorkArea();
+        var edge = Docking.Decide(card, area);
+        var wasHorizontal = Docking.IsHorizontal(_dock);
+        _dock = edge;
+        _anchor = Docking.IsHorizontal(edge) ? card.CenterX : null;
+        ApplyLayout();
+        if (edge == DockEdge.None && wasHorizontal)
+        {
+            // Wyspa odciągnięta od krawędzi wraca do karty pod tym samym środkiem, w całości na ekranie.
+            var width = ActualWidth - 2 * ShadowMargin;
+            var height = ActualHeight - 2 * ShadowMargin;
+            Left = Math.Clamp(card.CenterX - width / 2, area.X, Math.Max(area.X, area.Right - width)) - ShadowMargin;
+            Top = Math.Clamp(card.Y, area.Y, Math.Max(area.Y, area.Bottom - height)) - ShadowMargin;
+        }
+    }
+
+    // Zmiana rozdzielczości, skalowania albo paska zadań: przyklejony widżet wraca na swoją krawędź.
+    private void OnDisplayChanged(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(() => Safely("zmiana ekranu", PlaceDocked));
+
+    private void OnSystemParameterChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SystemParameters.WorkArea)) OnDisplayChanged(sender, e);
+    }
+
+    // Panel stoi obok karty (po stronie ekranu) albo — przy wyspie — pod nią lub nad nią, wyśrodkowany.
+    // Rozmiary przychodzą w pikselach urządzenia i bez marginesu panelu (miejsca na cień), a zwrócony
+    // punkt to lewy górny róg razem z marginesem — stąd odejmowany margines.
+    private System.Windows.Controls.Primitives.CustomPopupPlacement[] PlacePanel(System.Windows.Size popup, System.Windows.Size target, System.Windows.Point offset)
+    {
+        var scale = DeviceScale();
+        var margin = PanelMargin * scale;
+        const double besideGap = 4, islandGap = 6;
+        System.Windows.Controls.Primitives.CustomPopupPlacement At(double x, double y, System.Windows.Controls.Primitives.PopupPrimaryAxis axis) =>
+            new(new System.Windows.Point(x - margin, y - margin), axis);
+        var centerX = (target.Width - popup.Width) / 2;
+        var below = At(centerX, target.Height + islandGap * scale, System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal);
+        var above = At(centerX, -popup.Height - islandGap * scale, System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal);
+        // Obok karty panel zaczyna się 16 px niżej niż ona — tak stał od początku.
+        var left = At(-popup.Width - besideGap * scale, margin, System.Windows.Controls.Primitives.PopupPrimaryAxis.Vertical);
+        var right = At(target.Width + besideGap * scale, margin, System.Windows.Controls.Primitives.PopupPrimaryAxis.Vertical);
+        return _dock switch
+        {
+            DockEdge.Top => [below, above],
+            DockEdge.Bottom => [above, below],
+            DockEdge.Left => [right, left],
+            _ => [left, right],
+        };
     }
 
     private void SaveSettings()
     {
-        _config = _config with { Left = Left, Top = Top, Size = _size };
+        _config = _config with
+        {
+            Left = Left,
+            Top = Top,
+            Size = _size,
+            Dock = _dock == DockEdge.None ? null : Docking.ToText(_dock),
+            DockAnchor = Docking.IsHorizontal(_dock) ? _anchor : null,
+        };
         try
         {
             WidgetConfigStore.Write(_paths.ConfigFile, _config);
@@ -772,14 +928,51 @@ public partial class MainWindow : Window, ISettingsHost
         }
     }
 
+    // Przyklejony widżet wraca na ten sam ekran, a gdy tego ekranu już nie ma (albo krawędź wpisano
+    // ręcznie, bez pozycji) — na tę samą krawędź ekranu głównego. Obszar podaje się wprost: okno stoi
+    // jeszcze tam, gdzie postawił je start, więc Screen.FromHandle wskazałby nie ten ekran.
+    private void RestoreDocked(WidgetConfig config)
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        var scale = DeviceScale();
+        Box Dips(System.Drawing.Rectangle r) => new(r.Left / scale, r.Top / scale, r.Width / scale, r.Height / scale);
+        var index = config.Left is double savedLeft && config.Top is double savedTop
+            ? Docking.SavedScreen(_dock, savedLeft, savedTop, _anchor, ShadowMargin, screens.Select(screen => Dips(screen.Bounds)).ToList())
+            : -1;
+        Box area;
+        if (index >= 0)
+        {
+            area = Dips(screens[index].WorkingArea);
+            Top = config.Top!.Value;
+        }
+        else
+        {
+            var primary = screens.FirstOrDefault(screen => screen.Primary) ?? screens[0];
+            area = Dips(primary.WorkingArea);
+            _anchor = null;
+            Top = area.Y + 120 - ShadowMargin;
+        }
+        var card = CardBox();
+        (Left, Top) = Docking.Place(_dock, card.Width, card.Height, area, ShadowMargin, card.X, card.Y, _anchor);
+    }
+
     private void RestoreSettings()
     {
         var config = WidgetConfigStore.Read(_paths.ConfigFile) ?? new WidgetConfig();
         var size = config.Size is "mini" or "full" ? config.Size : "mini";
+        _dock = config.DockEdge;
+        _anchor = config.DockAnchor;
         SetSize(size, false);
         ApplyConfig(config, save: false);
 
-        // Zapisana pozycja może wskazywać na odłączony monitor — wtedy wraca domyślna.
+        if (_dock != DockEdge.None)
+        {
+            RestoreDocked(config);
+            return;
+        }
+
+        // Swobodna karta (także plik sprzed krawędzi) — dokładnie jak dotąd. Zapisana pozycja może
+        // wskazywać na odłączony monitor — wtedy wraca domyślna.
         var left = SystemParameters.VirtualScreenLeft;
         var top = SystemParameters.VirtualScreenTop;
         var right = left + SystemParameters.VirtualScreenWidth;
@@ -856,6 +1049,8 @@ public partial class MainWindow : Window, ISettingsHost
     {
         if (Panel.IsOpen) return;
         _panelSignature = "";
+        // Wyspa rozwija się razem z panelem; jej wysokość się nie zmienia, więc panel od razu stoi dobrze.
+        if (Docking.IsHorizontal(_dock)) SetIslandExpanded(true, animate: true);
         Panel.IsOpen = true;
         Safely("panel", UpdateView);
         Safely("statusline", UpdateStatusLineHint);
@@ -870,12 +1065,21 @@ public partial class MainWindow : Window, ISettingsHost
         StatusLineHint.Visibility = kind is StatusLineKind.Foreign or StatusLineKind.Missing ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ClosePanel()
+    // Drgnięcie przesunięcia to jedyny sposób, żeby otwarty Popup przeliczył swoje położenie.
+    private void RepositionPanel()
+    {
+        if (!Panel.IsOpen) return;
+        Panel.HorizontalOffset += 0.1;
+        Panel.HorizontalOffset -= 0.1;
+    }
+
+    private void ClosePanel(bool collapseIsland = true)
     {
         _pinned = false;
         PanelBody.BorderBrush = Brushes.Brush("#14FFFFFF");
         Panel.IsOpen = false;
         _hoverTimer.Stop();
+        if (collapseIsland && Docking.IsHorizontal(_dock) && _size == "mini") SetIslandExpanded(false, animate: true);
     }
 
     // --- menu ---------------------------------------------------------------------------------
@@ -885,8 +1089,28 @@ public partial class MainWindow : Window, ISettingsHost
         var menu = new ContextMenu();
         _sizeItem = new MenuItem();
         _sizeItem.Click += (_, _) => SwitchSize();
-        var dockItem = new MenuItem { Header = "Przyklej do prawej krawędzi" };
-        dockItem.Click += (_, _) => { SetDefaultPosition(); SaveSettings(); };
+        var dockItem = new MenuItem { Header = "Przyklej do" };
+        var trayDock = new ToolStripMenuItem("Przyklej do");
+        foreach (var (edge, label) in new[]
+        {
+            (DockEdge.Right, "Prawej krawędzi"),
+            (DockEdge.Left, "Lewej krawędzi"),
+            (DockEdge.Top, "Górnej krawędzi (wyspa)"),
+            (DockEdge.Bottom, "Dolnej krawędzi (wyspa)"),
+        })
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => Safely("przyklejanie", () => DockTo(edge));
+            dockItem.Items.Add(item);
+            var trayItem = new ToolStripMenuItem(label);
+            trayItem.Click += (_, _) => Safely("zasobnik: przyklejanie", () =>
+            {
+                if (_userHidden) { _userHidden = false; UpdateVisibility(); }
+                DockTo(edge);
+            });
+            trayDock.DropDownItems.Add(trayItem);
+            _dockItems.Add((edge, item, trayItem));
+        }
         var hideItem = new MenuItem { Header = "Ukryj (przywrócisz z zasobnika)" };
         hideItem.Click += (_, _) => { _userHidden = true; UpdateVisibility(); };
         var closeItem = new MenuItem { Header = "Zamknij widżet" };
@@ -927,8 +1151,7 @@ public partial class MainWindow : Window, ISettingsHost
         _trayShow.Click += (_, _) => Safely("zasobnik: pokaż/ukryj", () => { _userHidden = !_userHidden; UpdateVisibility(); });
         _traySize = (ToolStripMenuItem)trayMenu.Items.Add("Widok pełny");
         _traySize.Click += (_, _) => Safely("zasobnik: rozmiar", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SwitchSize(); });
-        var trayDock = (ToolStripMenuItem)trayMenu.Items.Add("Przyklej do prawej krawędzi");
-        trayDock.Click += (_, _) => Safely("zasobnik: dokowanie", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SetDefaultPosition(); SaveSettings(); });
+        trayMenu.Items.Add(trayDock);
         _trayAutostart = new ToolStripMenuItem("Uruchamiaj przy logowaniu") { Checked = AutostartService.IsEnabled() };
         _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
         trayMenu.Items.Add(_trayAutostart);
@@ -1019,7 +1242,7 @@ public partial class MainWindow : Window, ISettingsHost
 
     private void WireEvents()
     {
-        foreach (var surface in new[] { Card, Mini })
+        foreach (var surface in new[] { Card, Mini, Island })
         {
             surface.MouseEnter += (_, _) => { _openTimer.Stop(); _openTimer.Start(); };
             surface.MouseLeave += (_, _) => _openTimer.Stop();
@@ -1034,8 +1257,8 @@ public partial class MainWindow : Window, ISettingsHost
                 DragMove();
                 if (Math.Abs(Left - startLeft) >= 1 || Math.Abs(Top - startTop) >= 1)
                 {
-                    ClosePanel();
-                    InvokeSnap();
+                    ClosePanel(collapseIsland: false);
+                    SnapAfterDrag();
                     SaveSettings();
                 }
                 else if (_pinned)
@@ -1056,6 +1279,15 @@ public partial class MainWindow : Window, ISettingsHost
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }));
         MinimizeButton.Click += (_, _) => Safely("zmniejszanie", SwitchSize);
         ExpandButton.Click += (_, _) => Safely("rozwijanie", SwitchSize);
+        IslandSizeButton.Click += (_, _) => Safely("wyspa: rozmiar", SwitchSize);
+        Panel.CustomPopupPlacementCallback = PlacePanel;
+        // Popup nie przelicza położenia, gdy sam rośnie (lista sesji wypełnia się po otwarciu — nad wyspą
+        // przy dolnej krawędzi nachodziłby na nią) ani gdy okno się przesuwa (wyspa rozwijana przy boku
+        // ekranu przesuwa swój środek).
+        PanelBody.SizeChanged += (_, _) => RepositionPanel();
+        LocationChanged += (_, _) => RepositionPanel();
+        // Rozwijanie wyspy i zmiana widoku zmieniają rozmiar okna — przyklejone trzyma swoje miejsce.
+        SizeChanged += (_, _) => Safely("położenie", PlaceDocked);
 
         _openTimer.Tick += (_, _) =>
         {
@@ -1161,6 +1393,8 @@ public partial class MainWindow : Window, ISettingsHost
     {
         _hwnd = new WindowInteropHelper(this).Handle;
         RestoreSettings();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+        SystemParameters.StaticPropertyChanged += OnSystemParameterChanged;
         _tray.Visible = true;
         Safely("start", UpdateView);
         Safely("sprzątanie", () => _aggregator.CleanupOrphans());
@@ -1181,6 +1415,8 @@ public partial class MainWindow : Window, ISettingsHost
         _agentsTimer.Stop();
         _cleanupTimer.Stop();
         _configDebounce.Stop();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+        SystemParameters.StaticPropertyChanged -= OnSystemParameterChanged;
         _watcher?.Dispose();
         _configWatcher?.Dispose();
         _hotkey?.Dispose();

@@ -1,6 +1,7 @@
 ﻿<Window x:Class="ClaudeWidget.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ClaudeWidget"
         Title="Claude Code" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" SizeToContent="WidthAndHeight"
         FontFamily="Segoe UI Variable Text, Segoe UI" UseLayoutRounding="True">
@@ -118,8 +119,43 @@
                 Width="24" Height="12" Margin="0,0,0,1" ToolTip="Rozwiń do pełnego widoku"/>
       </StackPanel>
     </Border>
-    <Popup x:Name="Panel" Placement="Left" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade">
-      <Grid Margin="16,16,4,16">
+    <!-- Wyspa: widżet przyklejony do górnej albo dolnej krawędzi. Stała wysokość; po najechaniu
+         (albo w widoku pełnym) rozwija się tylko w szerz o stan i limity, więc panel pod nią nie skacze.
+         Rogi, obramowanie i kierunek cienia ustawia kod wg krawędzi. -->
+    <Border x:Name="Island" Height="40" Background="#202020" BorderBrush="#47FFFFFF" BorderThickness="1,0,1,1"
+            CornerRadius="0,0,16,16" Padding="9,0,9,0" Visibility="Collapsed">
+      <Border.Effect>
+        <DropShadowEffect x:Name="IslandShadow" BlurRadius="20" ShadowDepth="4" Direction="270" Opacity="0.5" Color="Black"/>
+      </Border.Effect>
+      <StackPanel Orientation="Horizontal">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Width="26" Height="26" CornerRadius="13" Background="#0A0A0A" Margin="0,0,5,0">
+            <Grid><Ellipse x:Name="IslandCzeka" Width="19" Height="19"/><TextBlock x:Name="IslandCountCzeka" Style="{StaticResource Count}" FontSize="11"/></Grid>
+          </Border>
+          <Border Width="26" Height="26" CornerRadius="13" Background="#0A0A0A" Margin="0,0,5,0">
+            <Grid><Ellipse x:Name="IslandPracuje" Width="19" Height="19"/><TextBlock x:Name="IslandCountPracuje" Style="{StaticResource Count}" FontSize="11"/></Grid>
+          </Border>
+          <Border Width="26" Height="26" CornerRadius="13" Background="#0A0A0A">
+            <Grid><Ellipse x:Name="IslandGotowe" Width="19" Height="19"/><TextBlock x:Name="IslandCountGotowe" Style="{StaticResource Count}" FontSize="11"/></Grid>
+          </Border>
+        </StackPanel>
+        <Border x:Name="IslandExtra" Width="0" ClipToBounds="True" Background="Transparent">
+          <StackPanel Orientation="Horizontal" Width="{x:Static local:MainWindow.IslandExtraWidth}" HorizontalAlignment="Left">
+            <Border Width="1" Height="22" Background="#1AFFFFFF" Margin="12,0,12,0"/>
+            <StackPanel Width="164" VerticalAlignment="Center">
+              <TextBlock x:Name="IslandStatus" FontSize="12.5" FontWeight="SemiBold" Foreground="#8A8A8A" TextTrimming="CharacterEllipsis"/>
+              <TextBlock x:Name="IslandDetail" FontSize="11" Foreground="#A6A6A6" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <Border Width="1" Height="22" Background="#1AFFFFFF" Margin="12,0,12,0"/>
+            <StackPanel x:Name="IslandMeters" Width="150" VerticalAlignment="Center"/>
+            <Button x:Name="IslandSizeButton" Style="{StaticResource ChromeButton}" FontSize="9"
+                    Width="22" Height="22" Margin="8,0,0,0" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+    <Popup x:Name="Panel" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade">
+      <Grid Margin="16">
         <Border x:Name="PanelBody" Width="340" Background="#2B2B2B" BorderBrush="#14FFFFFF" BorderThickness="1"
                 CornerRadius="10" Padding="14">
           <Border.Effect>
