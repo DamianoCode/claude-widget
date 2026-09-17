@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/DamianoCode/claude-widget/compare/v1.4.0...v1.5.0) (2026-09-17)
+
+
+### Nowe funkcje
+
+* **core:** głośność plików WAV przez skalowanie próbek ([bde2fc9](https://github.com/DamianoCode/claude-widget/commit/bde2fc93db0fa51b4915f70aac9242ad0df77d05))
+* okno ustawień, wybór dźwięków, głośność i wyciszenie ([77eca7c](https://github.com/DamianoCode/claude-widget/commit/77eca7cb5e18572430f95a9c26dedc9ee4e9c350))
+
 ## [1.4.0](https://github.com/DamianoCode/claude-widget/compare/v1.3.0...v1.4.0) (2026-09-16)
 
 
