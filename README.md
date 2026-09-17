@@ -74,10 +74,10 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 | najechanie na sygnalizator | po chwili otwiera panel: lista sesji, limity, podgląd nowych wyników |
 | kliknięcie sygnalizatora | przypina panel; drugie kliknięcie go zamyka |
 | kliknięcie sesji w panelu | przenosi do okna jej terminala i oznacza wynik jako przejrzany |
-| **Ctrl+Alt+K** | przenosi do sesji, która najdłużej czeka na Ciebie (a gdy żadna — do najnowszego wyniku) |
+| **Ctrl+Alt+K** (zmienisz w ustawieniach) | przenosi do sesji, która najdłużej czeka na Ciebie (a gdy żadna — do najnowszego wyniku) |
 | przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej |
 | „–” w rogu karty / „˅” pod światłami w mini | zmniejsza do widoku mini / rozwija do pełnego (widać je po najechaniu) |
-| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, przyklejenie do krawędzi, ukrycie, zamknięcie |
+| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, wyciszenie na czas, ustawienia, przyklejenie do krawędzi, ukrycie, zamknięcie |
 | ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też wersję, autostart i aktualizacje |
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu
@@ -94,8 +94,48 @@ a samo powiadomienie znika, gdy sesja przestaje czekać albo przejrzysz wynik. G
 na terminal tej sesji, widżet milczy. Seria próśb o zgodę w jednej sesji gra najwyżej raz na 15 s.
 
 Oba włącza się i wyłącza w menu pod prawym przyciskiem albo w menu ikony w zasobniku
-(„Dźwięki”, „Powiadomienia Windows”). Własne dźwięki: pliki `need.wav` (czeka) i `done.wav`
-(nowy wynik) w `~\.claude\widget\sounds` zastępują wbudowane.
+(„Dźwięki”, „Powiadomienia Windows”). „Wycisz” ucisza jedno i drugie na 30 minut, godzinę albo
+do jutra — potem wracają same.
+
+### Ustawienia
+
+„Ustawienia…” w obu menu otwiera okno, w którym każda zmiana działa od razu:
+
+- **dźwięk „czeka” i „nowy wynik”** osobno: wbudowany, cisza, dźwięk systemowy Windows albo
+  własny plik (WAV, MP3, WMA, M4A); wybrany dźwięk gra na próbę, ▶ odtwarza go ponownie,
+- **głośność** dźwięków,
+- **powtórzenia** — jak często seria próśb o zgodę w jednej sesji może grać dźwięk (domyślnie raz na 15 s),
+- **wyciszenie** na czas,
+- **skrót klawiszowy** — kliknij pole i naciśnij nową kombinację (Ctrl/Alt/Shift/Win + litera,
+  cyfra albo F1–F24); „Wyłącz” go wyłącza, a gdy skrót zajmuje inny program, okno o tym mówi.
+  Na polskiej klawiaturze Ctrl+Alt z A, C, E, L, N, O, S, X, Z to polskie litery (AltGr) — takich lepiej nie używać,
+- **krycie** karty widżetu (pod kursorem zawsze pełne),
+- **chowanie przy pełnym ekranie**.
+
+Wszystko ląduje w `~\.claude\widget\widget-config.json` („Otwórz plik ustawień”). Plik można
+też poprawić ręcznie — widżet wczytuje zmiany na bieżąco:
+
+```json
+{
+  "soundWaiting": "C:\\Windows\\Media\\Windows Notify Calendar.wav",
+  "soundDone": "none",
+  "volume": 60,
+  "soundRepeatSeconds": 30,
+  "hotkey": "Ctrl+Alt+K",
+  "opacity": 80,
+  "hideOnFullscreen": true
+}
+```
+
+`soundWaiting` / `soundDone` przyjmują `builtin`, `none` albo ścieżkę do pliku; `hotkey` pusty
+(`""`) wyłącza skrót. Bez wybranego dźwięku nadal działa dawny sposób: pliki `need.wav` (czeka)
+i `done.wav` (nowy wynik) w `~\.claude\widget\sounds` zastępują wbudowane. Wybrany plik, którego
+już nie ma, ustępuje wbudowanemu.
+
+Najlżejsze są pliki WAV: grają od razu, prawie bez kosztu dla procesora i pamięci, także
+z ustawioną głośnością. MP3, WMA i M4A odtwarza odtwarzacz Windows Media, który przy pierwszym
+dźwięku dokłada widżetowi kilkadziesiąt MB pamięci i kilka wątków (po odtworzeniu nie zużywa
+procesora). Na Windows N bez Media Feature Pack takie pliki nie zagrają — zamiast nich gra wbudowany dźwięk.
 
 ### Sesje w terminalu VS Code
 

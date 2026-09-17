@@ -27,7 +27,7 @@ namespace ClaudeWidget;
 /// Widżet Claude Code: sygnalizator stanu sesji i limity konta. Port widget.ps1 na WPF/.NET —
 /// zdarzeniowy (FileSystemWatcher zamiast odpytywania co 200 ms), bez procesów node.
 /// </summary>
-public partial class MainWindow : Window
+public partial class MainWindow : Window, ISettingsHost
 {
     // Rozmiary z widget.ps1 (patrz komentarze przy zmiennych $CardInner itd.).
     private const double CardInner = 122;
@@ -35,9 +35,7 @@ public partial class MainWindow : Window
     private const double ShadowMargin = 24;
     private const double SnapDistance = 24;
     private const long SeenAfterMs = 3000;
-    private const uint HotkeyModifiers = 3; // MOD_ALT | MOD_CONTROL
-    private const uint HotkeyKeyCode = 0x4B; // K
-    private const string HotkeyLabel = "Ctrl+Alt+K";
+    private const string PanelHintBase = "Kliknij sesję, aby przejść do jej terminala. Kliknij sygnalizator, aby przypiąć panel.";
     private const int AgentsIdleSeconds = 20;
     private const string IdleBorder = "#47FFFFFF";
     private const string CheckUpdatesLabel = "Sprawdź aktualizacje";
@@ -56,8 +54,12 @@ public partial class MainWindow : Window
     private readonly VsCodeBridge _vsCode;
     private readonly AlertPlanner _alerts = new();
     private readonly SessionNotifier _notifier;
-    private MenuItem _soundsItem = null!, _notificationsItem = null!;
-    private ToolStripMenuItem _traySounds = null!, _trayNotifications = null!;
+    private MenuItem _soundsItem = null!, _notificationsItem = null!, _muteItem = null!, _unmuteItem = null!;
+    private ToolStripMenuItem _traySounds = null!, _trayNotifications = null!, _trayMute = null!, _trayUnmute = null!;
+    private WidgetConfig _config = new();
+    private SettingsWindow? _settingsWindow;
+    private string? _registeredHotkey;
+    private string _hotkeyProblem = "";
     private readonly UpdateService _updates = new();
     private readonly Dictionary<string, RadialGradientBrush> _litFill = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _fullGlow = [];
@@ -73,7 +75,8 @@ public partial class MainWindow : Window
     private Icon? _trayIcon;
     private string _trayIconKey = "";
     private GlobalHotkey? _hotkey;
-    private FileSystemWatcher? _watcher;
+    private FileSystemWatcher? _watcher, _configWatcher;
+    private readonly DispatcherTimer _configDebounce = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private readonly DispatcherTimer _debounceTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _agentsTimer = new() { Interval = AgentsActiveInterval };
@@ -506,7 +509,7 @@ public partial class MainWindow : Window
         foreach (var alert in changes.Raised)
         {
             if (IsLookingAt(alert.Session, foreground, bridgeWindows) == true) continue;
-            if (_notifier.Raise(alert)) _alerts.MarkSounded(alert, nowMs);
+            if (_notifier.Raise(alert, nowMs)) _alerts.MarkSounded(alert, nowMs);
         }
     }
 
@@ -520,15 +523,169 @@ public partial class MainWindow : Window
             UpdateView();
         });
 
-    private void SetAlertOptions(bool sounds, bool notifications, bool save = true)
+    // --- ustawienia ------------------------------------------------------------------------------
+
+    // Jedyne miejsce, które zmienia ustawienia: menu, okno ustawień, plik i koniec wyciszenia.
+    private void ApplyConfig(WidgetConfig config, bool save = true)
     {
-        _notifier.SoundsEnabled = sounds;
-        _notifier.NotificationsEnabled = notifications;
-        if (!notifications) _notifier.ClearAll();
-        _soundsItem.IsChecked = _traySounds.Checked = sounds;
-        _notificationsItem.IsChecked = _trayNotifications.Checked = notifications;
+        _config = config;
+        _notifier.Configure(config);
+        _alerts.SoundThrottleMs = config.SoundRepeatMs;
+        if (config.IsMuted(NowMs())) _notifier.ClearAll();
+        _soundsItem.IsChecked = _traySounds.Checked = config.SoundsOn;
+        _notificationsItem.IsChecked = _trayNotifications.Checked = config.NotificationsOn;
+        UpdateMuteMenu();
+        UpdateOpacity();
+        if (_hwnd != IntPtr.Zero && config.HotkeyText != _registeredHotkey) RegisterHotkey();
+        if (!config.HidesOnFullscreen && _fullscreenHidden)
+        {
+            _fullscreenHidden = false;
+            UpdateVisibility();
+        }
         if (save) SaveSettings();
     }
+
+    // Zmiana spoza okna ustawień — otwarte okno pokazuje ją od razu.
+    private void ChangeConfig(Func<WidgetConfig, WidgetConfig> change)
+    {
+        ApplyConfig(change(_config));
+        _settingsWindow?.Refresh();
+    }
+
+    private void Mute(MuteDuration duration) =>
+        ChangeConfig(c => c with { MutedUntil = MuteOptions.Until(duration, DateTimeOffset.Now).ToUnixTimeMilliseconds() });
+
+    private void UpdateMuteMenu()
+    {
+        var now = DateTimeOffset.Now;
+        var muted = _config.IsMuted(now.ToUnixTimeMilliseconds());
+        var header = muted
+            ? MuteOptions.Describe(DateTimeOffset.FromUnixTimeMilliseconds(_config.MutedUntil!.Value).ToLocalTime(), now)
+            : "Wycisz";
+        _muteItem.Header = header;
+        _trayMute.Text = header;
+        _unmuteItem.IsEnabled = _trayUnmute.Enabled = muted;
+    }
+
+    // Wyciszenie kończy się samo — wtedy menu i okno ustawień wracają do „Wycisz”.
+    private void ExpireMute(long nowMs)
+    {
+        if (_config.MutedUntil is long until && until <= nowMs) ChangeConfig(c => c with { MutedUntil = null });
+    }
+
+    // Pod kursorem i z otwartym panelem karta jest zawsze w pełni widoczna.
+    private void UpdateOpacity() => Opacity = IsMouseOver || Panel.IsOpen ? 1 : _config.OpacityPercent / 100.0;
+
+    private void RegisterHotkey()
+    {
+        _hotkey?.Dispose();
+        _hotkey = null;
+        var text = _config.HotkeyText;
+        _registeredHotkey = text;
+        _hotkeyProblem = "";
+        PanelHint.Text = PanelHintBase;
+        if (text.Length == 0)
+        {
+            _hotkeyProblem = "Skrót jest wyłączony.";
+            return;
+        }
+        if (!Hotkey.TryParse(text, out var hotkey))
+        {
+            _hotkeyProblem = $"Nieprawidłowy skrót „{text}” w pliku ustawień.";
+            WidgetLog.Write(_paths, $"skrót: nieprawidłowy „{text}”");
+            return;
+        }
+        var label = hotkey.ToString();
+        try
+        {
+            _hotkey = new GlobalHotkey(HwndSource.FromHwnd(_hwnd)!, hotkey.Modifiers, hotkey.KeyCode);
+            if (_hotkey.Registered)
+            {
+                _hotkey.Pressed += async () => await Safely2("skrót", InvokeJumpAsync);
+                PanelHint.Text = $"Kliknij sesję, aby przejść do jej terminala; {label} przenosi do tej, która czeka najdłużej. Kliknij sygnalizator, aby przypiąć panel.";
+            }
+            else
+            {
+                _hotkeyProblem = $"{label} jest zajęty przez inny program — wybierz inny skrót.";
+                WidgetLog.Write(_paths, $"skrót {label} jest zajęty przez inny program");
+            }
+        }
+        catch (Exception error)
+        {
+            _hotkeyProblem = $"Nie udało się ustawić skrótu: {error.Message}";
+            WidgetLog.Write(_paths, $"skrót: {error.Message}");
+        }
+    }
+
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { } open)
+        {
+            if (open.WindowState == WindowState.Minimized) open.WindowState = WindowState.Normal;
+            open.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(this);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    // Ręczne zmiany w widget-config.json działają od razu. Pozycja i rozmiar z pliku się nie liczą —
+    // tym rządzi przeciąganie; własny zapis widżetu nic nie zmienia, więc niczego nie uruchamia.
+    private void StartConfigWatcher()
+    {
+        _configWatcher = new FileSystemWatcher(_paths.WidgetDir, System.IO.Path.GetFileName(_paths.ConfigFile))
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+            EnableRaisingEvents = true,
+        };
+        void OnChange(object sender, FileSystemEventArgs e) => Dispatcher.BeginInvoke(() => { _configDebounce.Stop(); _configDebounce.Start(); });
+        _configWatcher.Changed += OnChange;
+        _configWatcher.Created += OnChange;
+        _configWatcher.Renamed += (s, e) => OnChange(s, e);
+    }
+
+    private void ReloadConfig()
+    {
+        var loaded = WidgetConfigStore.Read(_paths.ConfigFile);
+        if (loaded is null)
+        {
+            // W trakcie zapisu albo z błędem w JSON-ie — zostają bieżące ustawienia.
+            if (File.Exists(_paths.ConfigFile)) WidgetLog.Write(_paths, "ustawienia: nie da się odczytać widget-config.json");
+            return;
+        }
+        if (loaded.WithoutPlacement() == _config.WithoutPlacement()) return;
+        ApplyConfig(loaded with { Left = _config.Left, Top = _config.Top, Size = _config.Size }, save: false);
+        _settingsWindow?.Refresh();
+    }
+
+    private void OpenConfigFile()
+    {
+        if (!File.Exists(_paths.ConfigFile)) SaveSettings();
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_paths.ConfigFile) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // .json bez skojarzonego programu
+            System.Diagnostics.Process.Start("notepad.exe", $"\"{_paths.ConfigFile}\"");
+        }
+    }
+
+    WidgetConfig ISettingsHost.Config => _config;
+
+    string ISettingsHost.WidgetDir => _paths.WidgetDir;
+
+    string ISettingsHost.HotkeyProblem => _hotkeyProblem;
+
+    void ISettingsHost.UpdateConfig(Func<WidgetConfig, WidgetConfig> change) => Safely("ustawienia", () => ApplyConfig(change(_config)));
+
+    void ISettingsHost.PreviewSound(AlertKind kind, string? choice) =>
+        Safely("odsłuch dźwięku", () => _notifier.Preview(kind, choice, _config.VolumePercent));
+
+    void ISettingsHost.OpenConfigFile() => Safely("plik ustawień", OpenConfigFile);
 
     // --- zasobnik systemowy ---------------------------------------------------------------------
 
@@ -604,16 +761,10 @@ public partial class MainWindow : Window
 
     private void SaveSettings()
     {
+        _config = _config with { Left = Left, Top = Top, Size = _size };
         try
         {
-            WidgetConfigStore.Write(_paths.ConfigFile, new WidgetConfig
-            {
-                Left = Left,
-                Top = Top,
-                Size = _size,
-                Sounds = _notifier.SoundsEnabled,
-                Notifications = _notifier.NotificationsEnabled,
-            });
+            WidgetConfigStore.Write(_paths.ConfigFile, _config);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -623,17 +774,17 @@ public partial class MainWindow : Window
 
     private void RestoreSettings()
     {
-        var config = WidgetConfigStore.Read(_paths.ConfigFile);
-        var size = config?.Size is "mini" or "full" ? config.Size : "mini";
+        var config = WidgetConfigStore.Read(_paths.ConfigFile) ?? new WidgetConfig();
+        var size = config.Size is "mini" or "full" ? config.Size : "mini";
         SetSize(size, false);
-        SetAlertOptions(config?.Sounds ?? true, config?.Notifications ?? true, save: false);
+        ApplyConfig(config, save: false);
 
         // Zapisana pozycja może wskazywać na odłączony monitor — wtedy wraca domyślna.
         var left = SystemParameters.VirtualScreenLeft;
         var top = SystemParameters.VirtualScreenTop;
         var right = left + SystemParameters.VirtualScreenWidth;
         var bottom = top + SystemParameters.VirtualScreenHeight;
-        if (config?.Left is double configLeft && config.Top is double configTop &&
+        if (config.Left is double configLeft && config.Top is double configTop &&
             configLeft >= left - ShadowMargin && configLeft + ActualWidth - ShadowMargin <= right &&
             configTop >= top - ShadowMargin && configTop + 80 <= bottom)
         {
@@ -667,7 +818,7 @@ public partial class MainWindow : Window
         var foregroundChanged = foreground != _lastForeground;
         _lastForeground = foreground;
         var fullscreen = false;
-        if (foreground != IntPtr.Zero && foreground != _hwnd &&
+        if (_config.HidesOnFullscreen && foreground != IntPtr.Zero && foreground != _hwnd &&
             NativeMethods.ClassOf(foreground) is not ("Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"))
         {
             fullscreen = NativeMethods.IsFullscreen(foreground) && NativeMethods.MonitorOf(foreground) == NativeMethods.MonitorOf(_hwnd);
@@ -742,12 +893,27 @@ public partial class MainWindow : Window
         closeItem.Click += (_, _) => Close();
         // IsCheckable przełącza znaczek sam, zanim przyjdzie Click — stąd odczyt IsChecked.
         _soundsItem = new MenuItem { Header = "Dźwięki", IsCheckable = true };
-        _soundsItem.Click += (_, _) => Safely("dźwięki", () => SetAlertOptions(_soundsItem.IsChecked, _notifier.NotificationsEnabled));
+        _soundsItem.Click += (_, _) => Safely("dźwięki", () => ChangeConfig(c => c with { Sounds = _soundsItem.IsChecked }));
         _notificationsItem = new MenuItem { Header = "Powiadomienia Windows", IsCheckable = true };
-        _notificationsItem.Click += (_, _) => Safely("powiadomienia", () => SetAlertOptions(_notifier.SoundsEnabled, _notificationsItem.IsChecked));
+        _notificationsItem.Click += (_, _) => Safely("powiadomienia", () => ChangeConfig(c => c with { Notifications = _notificationsItem.IsChecked }));
+        _muteItem = new MenuItem { Header = "Wycisz" };
+        foreach (var (duration, label) in MuteOptions.All)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => Safely("wyciszenie", () => Mute(duration));
+            _muteItem.Items.Add(item);
+        }
+        _muteItem.Items.Add(new Separator());
+        _unmuteItem = new MenuItem { Header = "Wyłącz wyciszenie" };
+        _unmuteItem.Click += (_, _) => Safely("wyciszenie", () => ChangeConfig(c => c with { MutedUntil = null }));
+        _muteItem.Items.Add(_unmuteItem);
+        var settingsItem = new MenuItem { Header = "Ustawienia…" };
+        settingsItem.Click += (_, _) => Safely("ustawienia", OpenSettings);
         menu.Items.Add(_sizeItem);
         menu.Items.Add(_soundsItem);
         menu.Items.Add(_notificationsItem);
+        menu.Items.Add(_muteItem);
+        menu.Items.Add(settingsItem);
         menu.Items.Add(new Separator());
         foreach (var item in new[] { dockItem, hideItem, closeItem }) menu.Items.Add(item);
         foreach (var surface in new[] { Card, Mini }) surface.ContextMenu = menu;
@@ -767,11 +933,22 @@ public partial class MainWindow : Window
         _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
         trayMenu.Items.Add(_trayAutostart);
         _traySounds = new ToolStripMenuItem("Dźwięki");
-        _traySounds.Click += (_, _) => Safely("zasobnik: dźwięki", () => SetAlertOptions(!_notifier.SoundsEnabled, _notifier.NotificationsEnabled));
+        _traySounds.Click += (_, _) => Safely("zasobnik: dźwięki", () => ChangeConfig(c => c with { Sounds = !c.SoundsOn }));
         trayMenu.Items.Add(_traySounds);
         _trayNotifications = new ToolStripMenuItem("Powiadomienia Windows");
-        _trayNotifications.Click += (_, _) => Safely("zasobnik: powiadomienia", () => SetAlertOptions(_notifier.SoundsEnabled, !_notifier.NotificationsEnabled));
+        _trayNotifications.Click += (_, _) => Safely("zasobnik: powiadomienia", () => ChangeConfig(c => c with { Notifications = !c.NotificationsOn }));
         trayMenu.Items.Add(_trayNotifications);
+        _trayMute = new ToolStripMenuItem("Wycisz");
+        foreach (var (duration, label) in MuteOptions.All)
+        {
+            _trayMute.DropDownItems.Add(label, null, (_, _) => Safely("zasobnik: wyciszenie", () => Mute(duration)));
+        }
+        _trayMute.DropDownItems.Add(new ToolStripSeparator());
+        _trayUnmute = new ToolStripMenuItem("Wyłącz wyciszenie");
+        _trayUnmute.Click += (_, _) => Safely("zasobnik: wyciszenie", () => ChangeConfig(c => c with { MutedUntil = null }));
+        _trayMute.DropDownItems.Add(_trayUnmute);
+        trayMenu.Items.Add(_trayMute);
+        trayMenu.Items.Add("Ustawienia…", null, (_, _) => Safely("zasobnik: ustawienia", OpenSettings));
         trayMenu.Items.Add(new ToolStripSeparator());
         // Uruchomienie deweloperskie nie ma skąd się aktualizować — pozycja jest, ale wyszarzona.
         _trayCheckItem = new ToolStripMenuItem(_updates.IsInstalled ? CheckUpdatesLabel : "Sprawdź aktualizacje (tylko po instalacji)")
@@ -895,7 +1072,11 @@ public partial class MainWindow : Window
             Safely("odświeżanie", UpdateView);
             Safely("pełny ekran", UpdateFullscreen);
             Safely("przejrzenie", () => UpdateSeenByFocus(NowMs()));
+            Safely("wyciszenie", () => ExpireMute(NowMs()));
         };
+        _configDebounce.Tick += (_, _) => { _configDebounce.Stop(); Safely("ustawienia z pliku", ReloadConfig); };
+        MouseEnter += (_, _) => UpdateOpacity();
+        MouseLeave += (_, _) => UpdateOpacity();
         _agentsTimer.Tick += async (_, _) => await Safely2("lista sesji", RunAgentsTickAsync);
         _cleanupTimer.Tick += (_, _) => Safely("sprzątanie", () => _aggregator.CleanupOrphans());
         _debounceTimer.Tick += (_, _) => { _debounceTimer.Stop(); Safely("obserwacja", UpdateView); };
@@ -980,31 +1161,11 @@ public partial class MainWindow : Window
     {
         _hwnd = new WindowInteropHelper(this).Handle;
         RestoreSettings();
-        var hint = "Kliknij sesję, aby przejść do jej terminala. Kliknij sygnalizator, aby przypiąć panel.";
-        try
-        {
-            var source = HwndSource.FromHwnd(_hwnd)!;
-            _hotkey = new GlobalHotkey(source, HotkeyModifiers, HotkeyKeyCode);
-            if (_hotkey.Registered)
-            {
-                _hotkey.Pressed += async () => await Safely2("skrót", InvokeJumpAsync);
-                hint = $"Kliknij sesję, aby przejść do jej terminala; {HotkeyLabel} przenosi do tej, która czeka najdłużej. Kliknij sygnalizator, aby przypiąć panel.";
-            }
-            else
-            {
-                WidgetLog.Write(_paths, $"skrót {HotkeyLabel} jest zajęty przez inny program");
-            }
-        }
-        catch (Exception error)
-        {
-            WidgetLog.Write(_paths, $"skrót: {error.Message}");
-        }
-        PanelHint.Text = hint;
-
         _tray.Visible = true;
         Safely("start", UpdateView);
         Safely("sprzątanie", () => _aggregator.CleanupOrphans());
         Safely("obserwacja katalogu", StartWatcher);
+        Safely("obserwacja ustawień", StartConfigWatcher);
         _refreshTimer.Start();
         _agentsTimer.Start();
         _cleanupTimer.Start();
@@ -1019,8 +1180,11 @@ public partial class MainWindow : Window
         _refreshTimer.Stop();
         _agentsTimer.Stop();
         _cleanupTimer.Stop();
+        _configDebounce.Stop();
         _watcher?.Dispose();
+        _configWatcher?.Dispose();
         _hotkey?.Dispose();
+        _settingsWindow?.Close();
         _notifier.ClearAll();
         _tray.Visible = false;
         _tray.Dispose();
