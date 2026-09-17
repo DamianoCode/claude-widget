@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace ClaudeWidget.Core.Settings;
 
 /// <summary>
-/// widget-config.json: pozycja i rozmiar okna, dźwięki, powiadomienia i pozostałe ustawienia.
+/// widget-config.json: pozycja, krawędź i rozmiar okna, dźwięki, powiadomienia i pozostałe ustawienia.
 /// Pisze go widżet (menu, okno ustawień), ale da się go też poprawić ręcznie — widżet wczytuje
 /// zmiany na bieżąco. Brak wpisu = wartość domyślna; wartości spoza zakresu przycina się przy odczycie.
 /// </summary>
@@ -19,6 +19,12 @@ public sealed record WidgetConfig
     public double? Top { get; init; }
 
     public string? Size { get; init; }
+
+    /// <summary>Krawędź, do której przyklejony jest widżet: left, right, top, bottom; brak = swobodnie.</summary>
+    public string? Dock { get; init; }
+
+    /// <summary>Środek wyspy wzdłuż górnej albo dolnej krawędzi (jednostki WPF).</summary>
+    public double? DockAnchor { get; init; }
 
     /// <summary>Dźwięk, gdy sesja czeka albo ma nowy wynik; brak wpisu = włączone.</summary>
     public bool? Sounds { get; init; }
@@ -50,6 +56,8 @@ public sealed record WidgetConfig
     /// <summary>Krycie karty widżetu w procentach (30–100); pod kursorem zawsze pełne.</summary>
     public int? Opacity { get; init; }
 
+    [JsonIgnore] public DockEdge DockEdge => Docking.Parse(Dock);
+
     [JsonIgnore] public bool SoundsOn => Sounds ?? true;
 
     [JsonIgnore] public bool NotificationsOn => Notifications ?? true;
@@ -66,8 +74,8 @@ public sealed record WidgetConfig
 
     public bool IsMuted(long nowMs) => MutedUntil is long until && until > nowMs;
 
-    /// <summary>Te same ustawienia bez pozycji i rozmiaru okna — do porównania po ręcznej zmianie pliku.</summary>
-    public WidgetConfig WithoutPlacement() => this with { Left = null, Top = null, Size = null };
+    /// <summary>Te same ustawienia bez położenia i rozmiaru okna — do porównania po ręcznej zmianie pliku.</summary>
+    public WidgetConfig WithoutPlacement() => this with { Left = null, Top = null, Size = null, Dock = null, DockAnchor = null };
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true,
