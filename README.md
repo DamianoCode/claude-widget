@@ -174,6 +174,12 @@ starcie widżetu) kliknięcie tylko wyciąga właściwe okno.
   agentów, `claude --bg`, `/bg`, `/fork`) z dopiskiem „w tle”; kliknięcie otwiera taką sesję
   w nowej karcie terminala (`claude attach`). Zna też sesje w terminalu, które nie wysłały jeszcze
   żadnego zdarzenia. Bez `claude` w `PATH` widżet działa dalej, tylko bez sesji w tle.
+- Turę przerwaną klawiszem Esc (także odmową w oknie zgody) widżet rozpoznaje po wpisie
+  o przerwaniu na końcu transkryptu sesji, bo Claude Code nie wysyła wtedy żadnego zdarzenia.
+  Sesja od razu przestaje świecić na żółto albo czerwono, bez zielonego, bo to Ty ją przerwałeś;
+  lokalne polecenia wpisane potem (`/config`, `!git status`) tego nie zmieniają. Transkrypt
+  czyta się tylko dla sesji, które pracują albo czekają na zgodę, i tylko jego koniec po zmianie
+  pliku.
 
 Sesje uruchamiane ze skryptów (`claude -p`, SDK) nie trafiają do widżetu. Sesja w tle, którą
 widżet zastał już skończoną (np. po restarcie komputera), nie zapala zielonego — nowy wynik to
