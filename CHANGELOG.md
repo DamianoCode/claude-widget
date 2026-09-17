@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/DamianoCode/claude-widget/compare/v1.5.0...v1.6.0) (2026-09-17)
+
+
+### Nowe funkcje
+
+* **core:** przyklejanie widżetu do krawędzi ekranu ([c4d1e9d](https://github.com/DamianoCode/claude-widget/commit/c4d1e9d529feaf4213a1a22fa5f78d93a116bd6d))
+* wyspa u górnej i dolnej krawędzi, „Przyklej do” dowolnej krawędzi ([b1de567](https://github.com/DamianoCode/claude-widget/commit/b1de567ab220d179d724d7989ff25c7f7a4386f4))
+
 ## [1.5.0](https://github.com/DamianoCode/claude-widget/compare/v1.4.0...v1.5.0) (2026-09-17)
 
 
