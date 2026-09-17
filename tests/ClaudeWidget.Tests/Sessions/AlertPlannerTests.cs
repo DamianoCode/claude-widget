@@ -41,7 +41,20 @@ public class AlertPlannerTests
         Assert.False(Assert.Single(planner.Next([S("a", SessionKinds.Waiting)], 3000).Raised).Sound);
 
         planner.Next([S("a", SessionKinds.Working)], 10_000);
-        Assert.True(Assert.Single(planner.Next([S("a", SessionKinds.Waiting)], 1000 + AlertPlanner.SoundThrottleMs).Raised).Sound);
+        Assert.True(Assert.Single(planner.Next([S("a", SessionKinds.Waiting)], 1000 + AlertPlanner.DefaultSoundThrottleMs).Raised).Sound);
+    }
+
+    [Theory]
+    [InlineData(0, 3000, true)]
+    [InlineData(60_000, 31_000, false)]
+    public void The_repeat_limit_follows_the_setting(long throttleMs, long againAt, bool soundsAgain)
+    {
+        var planner = new AlertPlanner { SoundThrottleMs = throttleMs };
+        planner.Next([S("a", SessionKinds.Working)], 0);
+        planner.MarkSounded(Assert.Single(planner.Next([S("a", SessionKinds.Waiting)], 1000).Raised), 1000);
+        planner.Next([S("a", SessionKinds.Working)], 2000);
+
+        Assert.Equal(soundsAgain, Assert.Single(planner.Next([S("a", SessionKinds.Waiting)], againAt).Raised).Sound);
     }
 
     [Fact]

@@ -15,17 +15,21 @@ public sealed record AlertChanges(IReadOnlyList<Alert> Raised, IReadOnlyList<str
 /// Z kolejnych odczytów sesji wylicza, o czym powiadomić: sesja weszła w „czeka” albo „nowy wynik”,
 /// a których powiadomień już nie trzeba (sesja przestała czekać, wynik przejrzany, sesja zamknięta).
 /// Pierwszy odczyt po starcie to stan zastany, nie zmiana — niczego nie ogłasza. Seria próśb
-/// o zgodę w jednej sesji gra dźwięk najwyżej raz na 15 s, a powiadomienie się podmienia.
+/// o zgodę w jednej sesji gra dźwięk najwyżej raz na <see cref="SoundThrottleMs"/> (domyślnie 15 s),
+/// a powiadomienie się podmienia.
 /// </summary>
 public sealed class AlertPlanner
 {
-    public const long SoundThrottleMs = 15_000;
+    public const long DefaultSoundThrottleMs = 15_000;
 
     private readonly Dictionary<(string Id, AlertKind Kind), long> _lastSound = [];
     private Dictionary<string, Entry>? _previous;
     private bool _backgroundKnown;
 
     private readonly record struct Entry(string Kind, bool Background);
+
+    /// <summary>Odstęp między dźwiękami jednej sesji i rodzaju; 0 = bez limitu.</summary>
+    public long SoundThrottleMs { get; set; } = DefaultSoundThrottleMs;
 
     /// <param name="backgroundKnown">
     /// Czy lista `claude agents` jest dostępna i świeża. Bez niej sesji w tle po prostu nie widać —
@@ -74,7 +78,7 @@ public sealed class AlertPlanner
     }
 
     /// <summary>
-    /// Dźwięk faktycznie zagrał — dopiero to zajmuje 15-sekundowy limit. Alarm wyciszony, bo akurat
+    /// Dźwięk faktycznie zagrał — dopiero to zajmuje limit powtórzeń. Alarm wyciszony, bo akurat
     /// patrzysz na sesję, nie może uciszyć następnej prośby, której już nie widzisz.
     /// </summary>
     public void MarkSounded(Alert alert, long nowMs) => _lastSound[(alert.Session.Id, alert.Kind)] = nowMs;
