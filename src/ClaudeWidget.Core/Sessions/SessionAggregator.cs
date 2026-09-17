@@ -10,6 +10,8 @@ namespace ClaudeWidget.Core.Sessions;
 /// </summary>
 public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe probe)
 {
+    private readonly InterruptedTurn _interrupted = new();
+
     // Sesja bez PID (sprzed wersji hooka z PID) i bez zdarzeń od 12 h najpewniej już nie istnieje.
     private const long StaleMs = 12 * 3_600_000L;
     private const long AgentsStaleMs = 60_000L;
@@ -25,6 +27,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
     {
         var sessions = new List<SessionInfo>();
         if (!Directory.Exists(paths.StateDir)) return sessions;
+        var transcripts = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var file in Directory.EnumerateFiles(paths.StateDir, "*.state.json"))
         {
@@ -53,6 +56,22 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
             var kind = state.State == SessionStates.Done
                 ? state.Fresh == true && seenAt < since ? SessionKinds.New : SessionKinds.Idle
                 : state.State;
+            var detail = state.Detail ?? "";
+            // Tura przerwana Esc — w trakcie pracy albo odmową w oknie zgody: sesja stoi, a nowego
+            // wyniku nie ma, bo przerwałeś ją sam. Czerwone z błędu API (bez narzędzia) zostaje.
+            var working = state.State == SessionStates.Working && state.Background is null or 0;
+            var askingPermission = state.State == SessionStates.Waiting && state.PendingTool.HasValue;
+            if ((working || askingPermission) && state.TranscriptPath is { } transcript)
+            {
+                transcripts.Add(transcript);
+                var turnStart = working ? state.TurnStartedAt ?? since : since;
+                if (_interrupted.Check(transcript, turnStart) is long interruptedAt)
+                {
+                    kind = SessionKinds.Idle;
+                    since = interruptedAt;
+                    detail = "";
+                }
+            }
             var project = ProjectOf(usage?.Project, state.Cwd);
 
             sessions.Add(new SessionInfo
@@ -60,7 +79,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                 Id = id,
                 Kind = kind,
                 Since = since,
-                Detail = state.Detail ?? "",
+                Detail = detail,
                 Summary = state.Summary ?? "",
                 Background = state.Background ?? 0,
                 Pid = state.Pid ?? 0,
@@ -73,6 +92,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
             });
         }
 
+        _interrupted.Retain(transcripts);
         MergeAgentSessions(sessions, agents, nowMs);
 
         return sessions

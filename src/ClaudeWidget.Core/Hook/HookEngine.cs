@@ -59,7 +59,8 @@ public static partial class HookEngine
         }
 
         var cwd = GetString(input, "cwd") ?? previous?.Cwd ?? string.Empty;
-        JsonStore.Write(path, next with { Cwd = cwd, Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
+        var transcript = GetString(input, "transcript_path") ?? previous?.TranscriptPath;
+        JsonStore.Write(path, next with { Cwd = cwd, TranscriptPath = transcript, Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
     }
 
     /// <summary>Liczy nowy stan sesji dla jednego zdarzenia, albo null, gdy zdarzenie niczego nie zmienia.</summary>

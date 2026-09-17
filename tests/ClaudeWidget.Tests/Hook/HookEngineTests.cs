@@ -185,6 +185,18 @@ public sealed class HookEngineTests
     }
 
     [Fact]
+    public void The_transcript_path_is_kept_for_spotting_turns_interrupted_with_Esc()
+    {
+        using var dir = new TempDir();
+        var hook = new HookHarness(dir.Path, "t1");
+        var working = hook.Send("UserPromptSubmit", HookHarness.Extra("""{"transcript_path":"C:\\Users\\u\\.claude\\projects\\api\\t1.jsonl"}"""));
+        Assert.Equal(@"C:\Users\u\.claude\projects\api\t1.jsonl", working!.TranscriptPath);
+
+        var waiting = hook.Send("Notification", HookHarness.Extra("""{"notification_type":"permission_prompt"}"""));
+        Assert.Equal(working.TranscriptPath, waiting!.TranscriptPath);
+    }
+
+    [Fact]
     public void A_monitor_alone_does_not_keep_the_session_yellow()
     {
         using var dir = new TempDir();

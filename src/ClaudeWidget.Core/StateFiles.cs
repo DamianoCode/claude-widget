@@ -47,6 +47,12 @@ public sealed record SessionState
 
     public string? Cwd { get; init; }
 
+    /// <summary>
+    /// Transkrypt sesji (JSONL Claude Code). Po nim widżet rozpoznaje turę przerwaną klawiszem Esc,
+    /// po której nie przychodzi żadne zdarzenie hooka (<see cref="Sessions.InterruptedTurn"/>).
+    /// </summary>
+    public string? TranscriptPath { get; init; }
+
     /// <summary>PID procesu Claude Code, rodzica hooka.</summary>
     public int? Pid { get; init; }
 
