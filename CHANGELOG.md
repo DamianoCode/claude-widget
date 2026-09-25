@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/DamianoCode/claude-widget/compare/v1.6.1...v1.7.0) (2026-09-25)
+
+
+### Nowe funkcje
+
+* liczniki sesji czekających i z nowym wynikiem obok postaci ([6c19681](https://github.com/DamianoCode/claude-widget/commit/6c196814c0fc202674489534d81ee3c580218dbd))
+* widok „pet” — pixel-artowa postać zamiast świateł ([a3f2a17](https://github.com/DamianoCode/claude-widget/commit/a3f2a1778746da30899505575efa1072e3ec484e))
+
 ## [1.6.1](https://github.com/DamianoCode/claude-widget/compare/v1.6.0...v1.6.1) (2026-09-17)
 
 
