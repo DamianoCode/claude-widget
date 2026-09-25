@@ -51,6 +51,8 @@ public partial class MainWindow : Window, ISettingsHost
         ("gotowe", "#3DD68C", "#173324"),
     ];
 
+    private static readonly (string Key, string Label)[] Views = [("full", "Pełny"), ("mini", "Mini"), ("pet", "Pet")];
+
     private readonly WidgetPaths _paths;
     private readonly SessionAggregator _aggregator;
     private readonly HostResolver _hostResolver = new();
@@ -73,8 +75,10 @@ public partial class MainWindow : Window, ISettingsHost
 
     private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!, _i5h = null!, _iWeek = null!;
     private Style _rowStyle = null!, _waitingRowStyle = null!;
-    private MenuItem _sizeItem = null!;
-    private ToolStripMenuItem _trayShow = null!, _traySize = null!, _trayAutostart = null!, _trayUpdateItem = null!, _trayCheckItem = null!;
+    private readonly PetControl _pet = new();
+    private readonly Dictionary<string, MenuItem> _viewItems = [];
+    private readonly Dictionary<string, ToolStripMenuItem> _trayViewItems = [];
+    private ToolStripMenuItem _trayShow = null!, _trayAutostart = null!, _trayUpdateItem = null!, _trayCheckItem = null!;
     private NotifyIcon _tray = null!;
     private Icon? _trayIcon;
     private string _trayIconKey = "";
@@ -118,6 +122,7 @@ public partial class MainWindow : Window, ISettingsHost
         _notifier = new SessionNotifier(_paths, _updates.IsInstalled, message => WidgetLog.Write(_paths, message), OnNotificationActivated);
 
         InitializeComponent();
+        Pet.Child = _pet.Root;
         BuildPalette();
         BuildMeters();
         BuildMenus();
@@ -217,6 +222,7 @@ public partial class MainWindow : Window, ISettingsHost
             }
         }
         SetPulse(counts["czeka"] > 0);
+        _pet.Set(counts);
 
         if (focus is not null)
         {
@@ -746,35 +752,38 @@ public partial class MainWindow : Window, ISettingsHost
 
     // --- rozmiar, położenie, widoczność ----------------------------------------------------------
 
-    private Border ActiveCard => Docking.IsHorizontal(_dock) ? Island : _size == "mini" ? Mini : Card;
+    // Pet stoi przy każdej krawędzi; wyspa zastępuje tylko kartę i mini przy górnej albo dolnej.
+    private bool ShowsIsland => Docking.IsHorizontal(_dock) && _size != "pet";
+
+    private Border ActiveCard => _size == "pet" ? Pet : ShowsIsland ? Island : _size == "mini" ? Mini : Card;
 
     private void SetSize(string size, bool keepRightEdge, bool animate = false)
     {
         var right = Left + ActualWidth;
         _size = size;
-        var label = size == "mini" ? "Widok pełny" : "Widok mini";
-        _sizeItem.Header = label;
-        _traySize.Text = label;
+        foreach (var (key, item) in _viewItems) item.IsChecked = key == size;
+        foreach (var (key, item) in _trayViewItems) item.Checked = key == size;
         ApplyLayout(animate);
         // Swobodna karta rośnie w lewo, jak dotąd; przyklejoną ustawia ApplyLayout.
         if (keepRightEdge && _dock == DockEdge.None) Left = right - ActualWidth;
     }
 
-    private void SwitchSize()
+    private void SwitchSize(string size)
     {
         ClosePanel(collapseIsland: false);
-        SetSize(_size == "mini" ? "full" : "mini", true, animate: true);
+        SetSize(size, true, animate: true);
         SaveSettings();
     }
 
-    // Który widok widać (karta, mini, wyspa), jak wygląda wyspa przy danej krawędzi i gdzie stoi okno.
+    // Który widok widać (karta, mini, wyspa, pet), jak wygląda wyspa przy danej krawędzi i gdzie stoi okno.
     private void ApplyLayout(bool animate = false)
     {
-        var horizontal = Docking.IsHorizontal(_dock);
-        Card.Visibility = !horizontal && _size == "full" ? Visibility.Visible : Visibility.Collapsed;
-        Mini.Visibility = !horizontal && _size == "mini" ? Visibility.Visible : Visibility.Collapsed;
-        Island.Visibility = horizontal ? Visibility.Visible : Visibility.Collapsed;
-        if (horizontal)
+        var island = ShowsIsland;
+        Card.Visibility = !island && _size == "full" ? Visibility.Visible : Visibility.Collapsed;
+        Mini.Visibility = !island && _size == "mini" ? Visibility.Visible : Visibility.Collapsed;
+        Pet.Visibility = _size == "pet" ? Visibility.Visible : Visibility.Collapsed;
+        Island.Visibility = island ? Visibility.Visible : Visibility.Collapsed;
+        if (island)
         {
             // Wyspa „wyrasta” z krawędzi: płaska i bez obramowania od jej strony, cień w stronę ekranu.
             var top = _dock == DockEdge.Top;
@@ -959,7 +968,7 @@ public partial class MainWindow : Window, ISettingsHost
     private void RestoreSettings()
     {
         var config = WidgetConfigStore.Read(_paths.ConfigFile) ?? new WidgetConfig();
-        var size = config.Size is "mini" or "full" ? config.Size : "mini";
+        var size = config.Size is "mini" or "full" or "pet" ? config.Size : "mini";
         _dock = config.DockEdge;
         _anchor = config.DockAnchor;
         SetSize(size, false);
@@ -1050,7 +1059,7 @@ public partial class MainWindow : Window, ISettingsHost
         if (Panel.IsOpen) return;
         _panelSignature = "";
         // Wyspa rozwija się razem z panelem; jej wysokość się nie zmienia, więc panel od razu stoi dobrze.
-        if (Docking.IsHorizontal(_dock)) SetIslandExpanded(true, animate: true);
+        if (ShowsIsland) SetIslandExpanded(true, animate: true);
         Panel.IsOpen = true;
         Safely("panel", UpdateView);
         Safely("statusline", UpdateStatusLineHint);
@@ -1087,8 +1096,14 @@ public partial class MainWindow : Window, ISettingsHost
     private void BuildMenus()
     {
         var menu = new ContextMenu();
-        _sizeItem = new MenuItem();
-        _sizeItem.Click += (_, _) => SwitchSize();
+        var viewItem = new MenuItem { Header = "Widok" };
+        foreach (var (key, label) in Views)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => Safely("widok", () => SwitchSize(key));
+            viewItem.Items.Add(item);
+            _viewItems[key] = item;
+        }
         var dockItem = new MenuItem { Header = "Przyklej do" };
         var trayDock = new ToolStripMenuItem("Przyklej do");
         foreach (var (edge, label) in new[]
@@ -1133,14 +1148,14 @@ public partial class MainWindow : Window, ISettingsHost
         _muteItem.Items.Add(_unmuteItem);
         var settingsItem = new MenuItem { Header = "Ustawienia…" };
         settingsItem.Click += (_, _) => Safely("ustawienia", OpenSettings);
-        menu.Items.Add(_sizeItem);
+        menu.Items.Add(viewItem);
         menu.Items.Add(_soundsItem);
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(_muteItem);
         menu.Items.Add(settingsItem);
         menu.Items.Add(new Separator());
         foreach (var item in new[] { dockItem, hideItem, closeItem }) menu.Items.Add(item);
-        foreach (var surface in new[] { Card, Mini }) surface.ContextMenu = menu;
+        foreach (var surface in new[] { Card, Mini, Island, Pet }) surface.ContextMenu = menu;
 
         _tray = new NotifyIcon();
         var trayMenu = new ContextMenuStrip();
@@ -1149,8 +1164,15 @@ public partial class MainWindow : Window, ISettingsHost
         trayMenu.Items.Add(new ToolStripSeparator());
         _trayShow = (ToolStripMenuItem)trayMenu.Items.Add("Ukryj widżet");
         _trayShow.Click += (_, _) => Safely("zasobnik: pokaż/ukryj", () => { _userHidden = !_userHidden; UpdateVisibility(); });
-        _traySize = (ToolStripMenuItem)trayMenu.Items.Add("Widok pełny");
-        _traySize.Click += (_, _) => Safely("zasobnik: rozmiar", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SwitchSize(); });
+        var trayView = new ToolStripMenuItem("Widok");
+        foreach (var (key, label) in Views)
+        {
+            var item = new ToolStripMenuItem(label);
+            item.Click += (_, _) => Safely("zasobnik: widok", () => { if (_userHidden) { _userHidden = false; UpdateVisibility(); } SwitchSize(key); });
+            trayView.DropDownItems.Add(item);
+            _trayViewItems[key] = item;
+        }
+        trayMenu.Items.Add(trayView);
         trayMenu.Items.Add(trayDock);
         _trayAutostart = new ToolStripMenuItem("Uruchamiaj przy logowaniu") { Checked = AutostartService.IsEnabled() };
         _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
@@ -1242,7 +1264,7 @@ public partial class MainWindow : Window, ISettingsHost
 
     private void WireEvents()
     {
-        foreach (var surface in new[] { Card, Mini, Island })
+        foreach (var surface in new[] { Card, Mini, Island, Pet })
         {
             surface.MouseEnter += (_, _) => { _openTimer.Stop(); _openTimer.Start(); };
             surface.MouseLeave += (_, _) => _openTimer.Stop();
@@ -1277,9 +1299,9 @@ public partial class MainWindow : Window, ISettingsHost
         // Przyciski obsługują wciśnięcie myszy same, więc karta nie zaczyna przy nich przeciągania.
         StatusLineHelp.RequestNavigate += (_, e) => Safely("pomoc statusline", () =>
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }));
-        MinimizeButton.Click += (_, _) => Safely("zmniejszanie", SwitchSize);
-        ExpandButton.Click += (_, _) => Safely("rozwijanie", SwitchSize);
-        IslandSizeButton.Click += (_, _) => Safely("wyspa: rozmiar", SwitchSize);
+        MinimizeButton.Click += (_, _) => Safely("zmniejszanie", () => SwitchSize("mini"));
+        ExpandButton.Click += (_, _) => Safely("rozwijanie", () => SwitchSize("full"));
+        IslandSizeButton.Click += (_, _) => Safely("wyspa: rozmiar", () => SwitchSize(_size == "mini" ? "full" : "mini"));
         Panel.CustomPopupPlacementCallback = PlacePanel;
         // Popup nie przelicza położenia, gdy sam rośnie (lista sesji wypełnia się po otwarciu — nad wyspą
         // przy dolnej krawędzi nachodziłby na nią) ani gdy okno się przesuwa (wyspa rozwijana przy boku

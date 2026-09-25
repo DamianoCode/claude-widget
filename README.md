@@ -78,8 +78,21 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 | przeciągnięcie | przesuwa widżet; blisko krawędzi ekranu przykleja się do niej (u góry i u dołu jako wyspa) |
 | „–” w rogu karty / „˅” pod światłami w mini | zmniejsza do widoku mini / rozwija do pełnego (widać je po najechaniu) |
 | pinezka / „˄” na wyspie | zostawia wyspę rozwiniętą / zwija ją z powrotem, gdy nie najeżdżasz |
-| prawy przycisk | widok mini / pełny, dźwięki, powiadomienia, wyciszenie na czas, ustawienia, przyklejenie do wybranej krawędzi, ukrycie, zamknięcie |
+| prawy przycisk | widok (pełny / mini / pet), dźwięki, powiadomienia, wyciszenie na czas, ustawienia, przyklejenie do wybranej krawędzi, ukrycie, zamknięcie |
 | ikona w zasobniku | kolor najpilniejszego stanu; kliknięcie chowa i pokazuje widżet, menu ma też wersję, autostart i aktualizacje |
+
+### Widok „pet”
+
+Zamiast świateł widżet może pokazywać pixel-artowego robota (prawy przycisk → **Widok → Pet**,
+to samo w menu ikony w zasobniku). Robot pokazuje najpilniejszy stan: gdy sesja czeka — podskakuje,
+macha i ma nad głową czerwony dymek „!”; gdy pracuje — na jego ekranie miga `>_`, a w dymku
+dopisują się kropki; przy nowym wyniku cieszy się z zielonym „✓”; gdy nic się nie dzieje — drzemie.
+
+Obok robota stoją liczniki tego, co wymaga Twojej akcji, w kolejności świateł: czerwony (ile sesji
+czeka) nad zielonym (ile ma nowy wynik). Licznik znika, gdy powtarzałby dymek — przy jednej sesji
+wystarczy sam dymek. Dzięki temu nowy wynik widać także wtedy, gdy robot pokazuje pracę innej
+sesji. Najechanie, kliknięcie i przeciąganie działają jak przy światłach. Robot przykleja się do
+każdej krawędzi tak samo — także u góry i u dołu, gdzie zamiast wyspy stoi on sam.
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu
 albo przez około 3 s patrzysz na jej okno terminala. Widżet chowa się sam, gdy na jego monitorze
