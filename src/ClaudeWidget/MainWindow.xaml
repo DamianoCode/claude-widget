@@ -154,6 +154,9 @@
         </Border>
       </StackPanel>
     </Border>
+    <!-- Widok „pet”: postać zamiast świateł (PetControl). Prawie przezroczyste tło, bo w pełni
+         przezroczyste piksele okna warstwowego przepuszczają mysz — nie dałoby się go złapać. -->
+    <Border x:Name="Pet" Background="#01000000" CornerRadius="12" Visibility="Collapsed"/>
     <Popup x:Name="Panel" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade">
       <Grid Margin="16">
         <Border x:Name="PanelBody" Width="340" Background="#2B2B2B" BorderBrush="#14FFFFFF" BorderThickness="1"
