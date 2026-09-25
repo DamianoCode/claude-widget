@@ -15,7 +15,8 @@ namespace ClaudeWidget;
 /// </summary>
 public sealed class PetControl
 {
-    private const int ArtWidth = 32, ArtHeight = 34, Zoom = 3;
+    // Postać zaczyna się 3 px od lewej — z lewej stoją liczniki sesji do przejrzenia.
+    private const int ArtWidth = 35, ArtHeight = 34, Zoom = 3, FigureLeft = 3;
 
     // Kolory jako 0xAARRGGBB — w pamięci to akurat kolejność Bgra32.
     private const uint Outline = 0xFF2B1A14, Shell = 0xFFD97757, ShellLight = 0xFFF0A583, ShellShade = 0xFFB4593D;
@@ -40,6 +41,7 @@ public sealed class PetControl
 
     private static readonly Dictionary<char, string[]> Digits = new()
     {
+        ['1'] = [".X.", "XX.", ".X.", ".X.", "XXX"],
         ['2'] = ["XXX", "..X", "XXX", "X..", "XXX"],
         ['3'] = ["XXX", "..X", "XXX", "..X", "XXX"],
         ['4'] = ["X.X", "X.X", "XXX", "..X", "..X"],
@@ -56,7 +58,7 @@ public sealed class PetControl
     private readonly Image _image;
     private readonly DispatcherTimer _timer = new();
     private string _mood = "";
-    private int _count, _frame;
+    private int _waiting = -1, _done = -1, _frame, _offset;
 
     public PetControl()
     {
@@ -73,15 +75,20 @@ public sealed class PetControl
 
     public FrameworkElement Root { get; }
 
-    /// <summary>Liczby sesji w stanach świateł (czeka / pracuje / gotowe); postać bierze najpilniejszy.</summary>
+    /// <summary>
+    /// Liczby sesji w stanach świateł (czeka / pracuje / gotowe). Postać pokazuje najpilniejszy,
+    /// a liczniki obok — ile sesji czeka i ile ma nowy wynik, czyli wszystko, co wymaga akcji.
+    /// </summary>
     public void Set(IReadOnlyDictionary<string, int> counts)
     {
-        var mood = new[] { "czeka", "pracuje", "gotowe" }.FirstOrDefault(key => counts.GetValueOrDefault(key) > 0) ?? "idle";
-        var count = mood == "idle" ? 0 : counts[mood];
-        if (mood == _mood && count == _count) return;
+        var waiting = counts.GetValueOrDefault("czeka");
+        var done = counts.GetValueOrDefault("gotowe");
+        var mood = waiting > 0 ? "czeka" : counts.GetValueOrDefault("pracuje") > 0 ? "pracuje" : done > 0 ? "gotowe" : "idle";
+        if (mood == _mood && waiting == _waiting && done == _done) return;
         if (mood != _mood) _frame = 0;
         _mood = mood;
-        _count = count;
+        _waiting = waiting;
+        _done = done;
         _timer.Interval = Moods[mood].Tick;
         UpdateTimer();
         Draw();
@@ -104,6 +111,7 @@ public sealed class PetControl
     private void Draw()
     {
         Array.Clear(_pixels);
+        _offset = FigureLeft;
         var color = Moods[_mood].Color;
         var f = _frame;
 
@@ -150,7 +158,8 @@ public sealed class PetControl
         }
 
         DrawBubble(y, color, f);
-        DrawBadge(color);
+        _offset = 0;
+        DrawCounters();
 
         _bitmap.WritePixels(new Int32Rect(0, 0, ArtWidth, ArtHeight), _pixels, ArtWidth * 4, 0);
     }
@@ -216,16 +225,26 @@ public sealed class PetControl
         }
     }
 
-    // Liczba sesji w tym stanie, gdy jest ich więcej niż jedna — jak licznik na świetle.
-    private void DrawBadge(uint color)
+    // Liczniki w kolejności świateł: czerwony (czeka) u góry, zielony (nowy wynik) pod nim — każdy
+    // zawsze w tym samym miejscu. Pomija się tylko ten, który powtarzałby dymek: jedna sesja,
+    // która sama zapala postać.
+    private void DrawCounters()
     {
-        if (_count < 2) return;
-        Box(0, 0, 7, 9, color, color, color);
-        Pattern(Digits[_count > 9 ? '+' : (char)('0' + _count)], 2, 2, Ink);
+        var alone = _waiting + _done == 1 && _mood is "czeka" or "gotowe";
+        if (alone) return;
+        if (_waiting > 0) Counter(0, _waiting, Moods["czeka"].Color);
+        if (_done > 0) Counter(10, _done, Moods["gotowe"].Color);
+    }
+
+    private void Counter(int top, int count, uint color)
+    {
+        Box(0, top, 7, 9, color, color, color);
+        Pattern(Digits[count > 9 ? '+' : (char)('0' + count)], 2, top + 2, Ink);
     }
 
     private void Px(int x, int y, uint color)
     {
+        x += _offset;
         if (x >= 0 && x < ArtWidth && y >= 0 && y < ArtHeight) _pixels[y * ArtWidth + x] = color;
     }
 
