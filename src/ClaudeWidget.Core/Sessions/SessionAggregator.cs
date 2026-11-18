@@ -22,8 +22,10 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
     /// <summary>
     /// Sesje gotowe do pokazania: pilniejsze pierwsze, przy remisie ta, która zmieniła stan
     /// najpóźniej. Przy okazji usuwa pliki sesji, których proces już nie żyje.
+    /// <paramref name="orcaLabels"/> — nazwy z Orca według identyfikatora agenta: sesja z Orca
+    /// nazywa się w widżecie tak jak w Orca.
     /// </summary>
-    public IReadOnlyList<SessionInfo> GetSessions(long nowMs, AgentsSnapshot? agents = null)
+    public IReadOnlyList<SessionInfo> GetSessions(long nowMs, AgentsSnapshot? agents = null, IReadOnlyDictionary<string, Ide.OrcaLabel>? orcaLabels = null)
     {
         var sessions = new List<SessionInfo>();
         if (!Directory.Exists(paths.StateDir)) return sessions;
@@ -73,6 +75,12 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                 }
             }
             var project = ProjectOf(usage?.Project, state.Cwd);
+            var name = !string.IsNullOrEmpty(usage?.Name) ? usage.Name : project;
+            if (state.OrcaSessionId is { } orcaId && orcaLabels?.GetValueOrDefault(orcaId) is { } label)
+            {
+                name = label.Title;
+                if (label.Workspace.Length > 0) project = label.Workspace;
+            }
 
             sessions.Add(new SessionInfo
             {
@@ -85,10 +93,11 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                 Pid = state.Pid ?? 0,
                 Project = project,
                 Cwd = state.Cwd ?? "",
-                Name = !string.IsNullOrEmpty(usage?.Name) ? usage.Name : project,
+                Name = name,
                 ContextPct = usage?.ContextPct,
                 ContextTokens = usage?.ContextTokens,
                 ContextSize = usage?.ContextSize,
+                Orca = Ide.OrcaPlace.From(state.OrcaSessionId, state.OrcaTerminal),
             });
         }
 

@@ -23,6 +23,44 @@ internal static partial class ParentProcess
         return status == 0 ? (int)info.InheritedFromUniqueProcessId : Environment.ProcessId;
     }
 
+    /// <summary>
+    /// Czy rodzicem procesu <paramref name="pid"/> jest Orca. Czat Orca to claude.exe uruchomiony
+    /// wprost przez Orca.exe, a skrypt (<c>claude -p</c>) odpalony z tego czatu dziedziczy jego
+    /// zmienne, ale rodzicem ma powłokę. Gdy czegoś nie da się sprawdzić — false.
+    /// </summary>
+    public static bool IsChildOfOrca(int pid)
+    {
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (handle == 0) return false;
+        try
+        {
+            var info = default(ProcessBasicInformationData);
+            if (NtQueryInformationProcess(handle, ProcessBasicInformation, ref info, Marshal.SizeOf<ProcessBasicInformationData>(), out _) != 0)
+            {
+                return false;
+            }
+            using var parent = System.Diagnostics.Process.GetProcessById((int)info.InheritedFromUniqueProcessId);
+            return parent.ProcessName.Equals("Orca", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
+
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, int processId);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint handle);
+
     [LibraryImport("ntdll.dll")]
     private static partial int NtQueryInformationProcess(
         nint processHandle,

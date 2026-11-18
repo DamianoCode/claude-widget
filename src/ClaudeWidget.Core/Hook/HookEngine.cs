@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using ClaudeWidget.Core.Ide;
 
 namespace ClaudeWidget.Core.Hook;
 
@@ -27,8 +28,9 @@ public static partial class HookEngine
     /// <summary>
     /// Cała obsługa jednego zdarzenia hooka: czyta poprzedni stan, liczy przejście i zapisuje wynik.
     /// Niczego nie wypisuje i nigdy nie rzuca — obserwacja nigdy nie może zepsuć sesji.
+    /// <paramref name="orca"/> — miejsce sesji w Orca, gdy to Orca ją uruchomiła.
     /// </summary>
-    public static void Handle(WidgetPaths paths, JsonElement input, int pid, long nowMs)
+    public static void Handle(WidgetPaths paths, JsonElement input, int pid, long nowMs, OrcaPlace? orca = null)
     {
         var sessionId = GetString(input, "session_id");
         var path = paths.SessionFile(sessionId, SessionFileKind.State);
@@ -48,20 +50,25 @@ public static partial class HookEngine
 
         if (next is null)
         {
-            // Bez zmiany stanu dopisuje się tylko PID — gdy sesję przejął nowy proces albo pochodzi
-            // sprzed wersji hooka z PID. Czas zapisu też: proces, który ruszył po nim, widżet uznaje
-            // za obcy.
-            if (previous is not null && previous.Pid != pid)
+            // Bez zmiany stanu dopisuje się tylko PID i miejsce w Orca — gdy sesję przejął nowy proces
+            // albo pochodzi sprzed wersji hooka z PID. Czas zapisu też: proces, który ruszył po nim,
+            // widżet uznaje za obcy.
+            if (previous is not null && (previous.Pid != pid || PlaceOf(previous) != orca))
             {
-                JsonStore.Write(path, previous with { Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
+                JsonStore.Write(path, WithPlace(previous, orca) with { Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
             }
             return;
         }
 
         var cwd = GetString(input, "cwd") ?? previous?.Cwd ?? string.Empty;
         var transcript = GetString(input, "transcript_path") ?? previous?.TranscriptPath;
-        JsonStore.Write(path, next with { Cwd = cwd, TranscriptPath = transcript, Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
+        JsonStore.Write(path, WithPlace(next, orca) with { Cwd = cwd, TranscriptPath = transcript, Pid = pid, UpdatedAt = nowMs }, StateJson.Default.SessionState);
     }
+
+    private static OrcaPlace? PlaceOf(SessionState state) => OrcaPlace.From(state.OrcaSessionId, state.OrcaTerminal);
+
+    private static SessionState WithPlace(SessionState state, OrcaPlace? orca) =>
+        state with { OrcaSessionId = orca?.AgentSessionId, OrcaTerminal = orca?.TerminalHandle };
 
     /// <summary>Liczy nowy stan sesji dla jednego zdarzenia, albo null, gdy zdarzenie niczego nie zmienia.</summary>
     public static SessionState? Transition(string? eventName, JsonElement input, SessionState? previous, long now)

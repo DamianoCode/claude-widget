@@ -8,7 +8,14 @@ public class HookCliTests
 {
     private static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "ClaudeWidgetHook.exe");
 
-    private static (int ExitCode, string Stdout) Run(string arguments, string stdin, string stateDir)
+    // Testy same chodzą czasem w terminalu albo czacie Orca — jego zmienne nie mogą przeciec do hooka.
+    private static readonly IReadOnlyDictionary<string, string?> OutsideOrca = new Dictionary<string, string?>
+    {
+        ["ORCA_AGENT_SESSION_ID"] = null,
+        ["ORCA_TERMINAL_HANDLE"] = null,
+    };
+
+    private static (int ExitCode, string Stdout) Run(string arguments, string stdin, string stateDir, IReadOnlyDictionary<string, string?>? environment = null)
     {
         var info = new ProcessStartInfo(Exe, arguments)
         {
@@ -24,6 +31,11 @@ public class HookCliTests
         info.Environment["CLAUDE_WIDGET_STATE_DIR"] = stateDir;
         info.Environment["CLAUDE_CODE_ENTRYPOINT"] = "cli";
         info.Environment["CLAUDE_CODE_SESSION_ATTENDED"] = "1";
+        foreach (var (name, value) in OutsideOrca.Concat(environment ?? new Dictionary<string, string?>()))
+        {
+            if (value is null) info.Environment.Remove(name);
+            else info.Environment[name] = value;
+        }
         using var process = Process.Start(info)!;
         try
         {
@@ -50,6 +62,58 @@ public class HookCliTests
         using var state = JsonDocument.Parse(File.ReadAllText(dir.File("cli1.state.json")));
         Assert.Equal("pracuje", state.RootElement.GetProperty("state").GetString());
         Assert.Equal(Environment.ProcessId, state.RootElement.GetProperty("pid").GetInt32());
+    }
+
+    [Fact]
+    public void A_cli_session_outside_orca_writes_no_orca_fields()
+    {
+        using var dir = new TempDir();
+        Run("hook", """{"hook_event_name":"UserPromptSubmit","session_id":"cli4","cwd":"C:\\apps\\api"}""", dir.Path);
+
+        var json = File.ReadAllText(dir.File("cli4.state.json"));
+        Assert.DoesNotContain("orca", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_headless_run_with_an_orca_chats_environment_but_not_started_by_orca_is_ignored()
+    {
+        // Środowisko hooka w czacie Orca 1.4.263 — tak samo widzi je `claude -p` odpalony z czatu.
+        // Rodzicem hooka jest tu proces testów, nie Orca, jak w takim zagnieżdżonym przebiegu.
+        using var dir = new TempDir();
+        var orcaChat = new Dictionary<string, string?>
+        {
+            ["CLAUDE_CODE_ENTRYPOINT"] = "orca",
+            ["CLAUDE_CODE_SESSION_ATTENDED"] = "0",
+            ["ORCA_AGENT_SESSION_ID"] = "dfbd0007-1109-4766-9512-58f3bb8b4dfc",
+        };
+
+        var (exitCode, stdout) = Run("hook", """{"hook_event_name":"UserPromptSubmit","session_id":"orca1","cwd":"C:\\apps\\api"}""", dir.Path, orcaChat);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.False(File.Exists(dir.File("orca1.state.json")));
+    }
+
+    [Fact]
+    public void A_cli_session_in_an_orca_terminal_is_recorded_with_its_terminal_handle()
+    {
+        using var dir = new TempDir();
+        var orcaTerminal = new Dictionary<string, string?> { ["ORCA_TERMINAL_HANDLE"] = "term_8edd3d90-a6fc-4baf-a3d8-97e69f3c9126" };
+
+        Run("hook", """{"hook_event_name":"UserPromptSubmit","session_id":"orca2","cwd":"C:\\apps\\api"}""", dir.Path, orcaTerminal);
+
+        using var state = JsonDocument.Parse(File.ReadAllText(dir.File("orca2.state.json")));
+        Assert.Equal("term_8edd3d90-a6fc-4baf-a3d8-97e69f3c9126", state.RootElement.GetProperty("orcaTerminal").GetString());
+    }
+
+    [Fact]
+    public void A_headless_orca_run_without_an_agent_id_is_ignored()
+    {
+        using var dir = new TempDir();
+        Run("hook", """{"hook_event_name":"UserPromptSubmit","session_id":"orca3","cwd":"C:\\apps\\api"}""", dir.Path,
+            new Dictionary<string, string?> { ["CLAUDE_CODE_ENTRYPOINT"] = "orca" });
+
+        Assert.False(File.Exists(dir.File("orca3.state.json")));
     }
 
     [Theory]

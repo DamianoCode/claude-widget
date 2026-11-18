@@ -37,4 +37,7 @@ public sealed record SessionInfo
 
     /// <summary>Krótkie id do `claude attach <id>`; puste dla sesji, które nie są w tle.</summary>
     public string ShortId { get; init; } = "";
+
+    /// <summary>Miejsce sesji w Orca (terminal albo czat); null, gdy sesji nie uruchomiła Orca.</summary>
+    public Ide.OrcaPlace? Orca { get; init; }
 }
