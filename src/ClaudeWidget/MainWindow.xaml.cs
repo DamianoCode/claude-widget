@@ -76,6 +76,9 @@ public partial class MainWindow : Window, ISettingsHost
     private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!, _i5h = null!, _iWeek = null!;
     private Style _rowStyle = null!, _waitingRowStyle = null!;
     private readonly PetControl _pet = new();
+    // Pierwsza, pikselowa wersja Peta — wybierana jako strój „pixel”; tworzona dopiero wtedy.
+    private PixelPetControl? _pixelPet;
+    private IReadOnlyDictionary<string, int> _petCounts = new Dictionary<string, int>();
     private readonly Dictionary<string, MenuItem> _viewItems = [];
     private readonly List<(string Key, MenuItem Item, ToolStripMenuItem TrayItem)> _skinItems = [];
     private readonly Dictionary<string, ToolStripMenuItem> _trayViewItems = [];
@@ -223,7 +226,9 @@ public partial class MainWindow : Window, ISettingsHost
             }
         }
         SetPulse(counts["czeka"] > 0);
+        _petCounts = counts;
         _pet.Set(counts);
+        _pixelPet?.Set(counts);
 
         if (focus is not null)
         {
@@ -564,6 +569,7 @@ public partial class MainWindow : Window, ISettingsHost
     {
         _config = config;
         _pet.SetSkin(config.PetSkinKey);
+        ShowPetVersion(config.PetSkinKey == "pixel");
         foreach (var (key, item, trayItem) in _skinItems)
             item.IsChecked = trayItem.Checked = key == config.PetSkinKey;
         _notifier.Configure(config);
@@ -856,8 +862,17 @@ public partial class MainWindow : Window, ISettingsHost
         if (_size != "pet") return position;
         var bottomGap = area.Bottom - (position.Top + ShadowMargin + card.Height);
         if (_dock == DockEdge.Bottom || (_dock is DockEdge.Left or DockEdge.Right && bottomGap <= Docking.Gap + 0.5))
-            position.Top += bottomGap + PetControl.GroundInset;
+            position.Top += bottomGap + (Pet.Child == _pet.Root ? PetControl.GroundInset : 0);
         return position;
+    }
+
+    private void ShowPetVersion(bool pixel)
+    {
+        FrameworkElement root = pixel ? (_pixelPet ??= new PixelPetControl()).Root : _pet.Root;
+        if (Pet.Child == root) return;
+        Pet.Child = root;
+        _pixelPet?.Set(_petCounts);
+        PlaceDocked();
     }
 
     private void UpdatePetLook()

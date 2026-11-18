@@ -7,7 +7,8 @@ public static class PetSkins
         ("classic", "Robot"),
         ("portfolio", "Bluza i sneakersy"),
         ("christmas", "Świąteczny"),
+        ("pixel", "Pikselowy (pierwsza wersja)"),
     ];
 
-    public static string Normalize(string? key) => key is "portfolio" or "christmas" ? key : "classic";
+    public static string Normalize(string? key) => key is "portfolio" or "christmas" or "pixel" ? key : "classic";
 }
