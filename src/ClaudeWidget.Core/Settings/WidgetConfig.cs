@@ -20,7 +20,7 @@ public sealed record WidgetConfig
 
     public string? Size { get; init; }
 
-    /// <summary>Strój Peta: classic, portfolio albo christmas.</summary>
+    /// <summary>Strój Peta: classic, portfolio, christmas albo pixel (pierwsza, pikselowa wersja).</summary>
     public string? PetSkin { get; init; }
 
     [JsonIgnore] public string PetSkinKey => PetSkins.Normalize(PetSkin);
