@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/DamianoCode/claude-widget/compare/v1.7.0...v1.8.0) (2026-11-18)
+
+
+### Nowe funkcje
+
+* dopracowany Pet CRT z animacjami i strojami ([8ad38d4](https://github.com/DamianoCode/claude-widget/commit/8ad38d42c7cdd565e792d0d587324e238bf2b09a))
+* dopracowany Pet CRT z animacjami i strojami ([a5d61fa](https://github.com/DamianoCode/claude-widget/commit/a5d61faf04e000112ebdd510aeb2a0aeebc46b18))
+
 ## [1.7.0](https://github.com/DamianoCode/claude-widget/compare/v1.6.1...v1.7.0) (2026-09-25)
 
 
