@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/DamianoCode/claude-widget/compare/v1.9.0...v1.10.0) (2026-11-18)
+
+
+### Nowe funkcje
+
+* integracja z Orca — stany czatów, przełączanie i nazwy z Orca ([73626f5](https://github.com/DamianoCode/claude-widget/commit/73626f5767035821bf9e2be6db7543026f69c037))
+* integracja z Orca — stany czatów, przełączanie i nazwy z Orca ([dd60f71](https://github.com/DamianoCode/claude-widget/commit/dd60f71c1fe8b100b0ff56df80d825edfd3aaa21))
+
 ## [1.9.0](https://github.com/DamianoCode/claude-widget/compare/v1.8.0...v1.9.0) (2026-11-18)
 
 
