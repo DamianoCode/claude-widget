@@ -103,6 +103,10 @@
                  VerticalAlignment="Center"/>
     </Grid>
     <CheckBox x:Name="FullscreenCheck" Content="Chowaj widżet, gdy na jego monitorze coś jest na pełnym ekranie"/>
+    <DockPanel Margin="0,6,0,0">
+      <TextBlock Text="Strój Peta" Style="{StaticResource Label}"/>
+      <ComboBox x:Name="PetSkinCombo" AutomationProperties.Name="Strój Peta"/>
+    </DockPanel>
 
     <DockPanel Margin="0,18,0,0" LastChildFill="False">
       <Button x:Name="OpenFileButton" DockPanel.Dock="Left" Margin="0,3" Content="Otwórz plik ustawień"/>

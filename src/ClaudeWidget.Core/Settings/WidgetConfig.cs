@@ -20,6 +20,11 @@ public sealed record WidgetConfig
 
     public string? Size { get; init; }
 
+    /// <summary>Strój Peta: classic, portfolio albo christmas.</summary>
+    public string? PetSkin { get; init; }
+
+    [JsonIgnore] public string PetSkinKey => PetSkins.Normalize(PetSkin);
+
     /// <summary>Krawędź, do której przyklejony jest widżet: left, right, top, bottom; brak = swobodnie.</summary>
     public string? Dock { get; init; }
 

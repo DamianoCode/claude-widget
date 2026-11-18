@@ -83,15 +83,22 @@ $json | & "$env:LOCALAPPDATA\ClaudeWidget\current\ClaudeWidgetHook.exe" statusli
 
 ### Widok „pet”
 
-Zamiast świateł widżet może pokazywać pixel-artowego robota (prawy przycisk → **Widok → Pet**,
-to samo w menu ikony w zasobniku). Robot pokazuje najpilniejszy stan: gdy sesja czeka — podskakuje,
-macha i ma nad głową czerwony dymek „!”; gdy pracuje — na jego ekranie miga `>_`, a w dymku
-dopisują się kropki; przy nowym wyniku cieszy się z zielonym „✓”; gdy nic się nie dzieje — drzemie.
+Zamiast świateł widżet może pokazywać animowanego robota z monitorem CRT (prawy przycisk → **Widok → Pet**,
+to samo w menu ikony w zasobniku). Robot pokazuje najpilniejszy stan: gdy sesja czeka — podskakuje
+dwa razy, macha i wyświetla czerwony wykrzyknik na ciemnym kineskopie. Podczas pracy na ekranie pojawiają
+się wiersze terminala, a w dymku dopisują się kropki. Przy nowym wyniku Pet dwa razy cieszy się
+z zielonym „✓”, a potem spokojnie czeka. Gdy nic się nie dzieje — drzemie. Przy każdej zmianie stanu
+kineskop włącza się na nowo.
+Pet obraca się w stronę środka ekranu, na którym stoi. W pobliżu środka patrzy przed siebie.
+
+W menu **Strój Peta** (także w zasobniku) oraz w ustawieniach wybierzesz robota, strój
+„Bluza i sneakersy” albo strój świąteczny z czapką Mikołaja. Wybór działa od razu
+i zapisuje się w pliku ustawień jako `petSkin` (`classic`, `portfolio` lub `christmas`).
 
 Obok robota stoją liczniki tego, co wymaga Twojej akcji, w kolejności świateł: czerwony (ile sesji
-czeka) nad zielonym (ile ma nowy wynik). Licznik znika, gdy powtarzałby dymek — przy jednej sesji
-wystarczy sam dymek. Dzięki temu nowy wynik widać także wtedy, gdy robot pokazuje pracę innej
-sesji. Najechanie, kliknięcie i przeciąganie działają jak przy światłach. Robot przykleja się do
+czeka) nad zielonym (ile ma nowy wynik). Przy jednej sesji wymagającej akcji wystarczy alert lub
+zielony dymek, jeśli Pet już sygnalizuje jej stan. Dzięki temu nowy wynik widać także wtedy, gdy robot
+pokazuje pracę innej sesji. Najechanie, kliknięcie i przeciąganie działają jak przy światłach. Robot przykleja się do
 każdej krawędzi tak samo — także u góry i u dołu, gdzie zamiast wyspy stoi on sam.
 
 Wynik uznaje się za przejrzany, gdy wpiszesz w tej sesji nowe polecenie, klikniesz ją w panelu

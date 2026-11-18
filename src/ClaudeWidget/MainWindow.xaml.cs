@@ -77,6 +77,7 @@ public partial class MainWindow : Window, ISettingsHost
     private Style _rowStyle = null!, _waitingRowStyle = null!;
     private readonly PetControl _pet = new();
     private readonly Dictionary<string, MenuItem> _viewItems = [];
+    private readonly List<(string Key, MenuItem Item, ToolStripMenuItem TrayItem)> _skinItems = [];
     private readonly Dictionary<string, ToolStripMenuItem> _trayViewItems = [];
     private ToolStripMenuItem _trayShow = null!, _trayAutostart = null!, _trayUpdateItem = null!, _trayCheckItem = null!;
     private NotifyIcon _tray = null!;
@@ -562,6 +563,9 @@ public partial class MainWindow : Window, ISettingsHost
     private void ApplyConfig(WidgetConfig config, bool save = true)
     {
         _config = config;
+        _pet.SetSkin(config.PetSkinKey);
+        foreach (var (key, item, trayItem) in _skinItems)
+            item.IsChecked = trayItem.Checked = key == config.PetSkinKey;
         _notifier.Configure(config);
         _alerts.SoundThrottleMs = config.SoundRepeatMs;
         if (config.IsMuted(NowMs())) _notifier.ClearAll();
@@ -837,9 +841,34 @@ public partial class MainWindow : Window, ISettingsHost
 
     private void PlaceDocked()
     {
-        if (_dock == DockEdge.None || _hwnd == IntPtr.Zero) return;
-        var card = CardBox();
-        (Left, Top) = Docking.Place(_dock, card.Width, card.Height, WorkArea(), ShadowMargin, card.X, card.Y, _anchor);
+        if (_hwnd == IntPtr.Zero) return;
+        if (_dock != DockEdge.None)
+        {
+            var card = CardBox();
+            (Left, Top) = PlaceWidget(card, WorkArea());
+        }
+        UpdatePetLook();
+    }
+
+    private (double Left, double Top) PlaceWidget(Box card, Box area)
+    {
+        var position = Docking.Place(_dock, card.Width, card.Height, area, ShadowMargin, card.X, card.Y, _anchor);
+        if (_size != "pet") return position;
+        var bottomGap = area.Bottom - (position.Top + ShadowMargin + card.Height);
+        if (_dock == DockEdge.Bottom || (_dock is DockEdge.Left or DockEdge.Right && bottomGap <= Docking.Gap + 0.5))
+            position.Top += bottomGap + PetControl.GroundInset;
+        return position;
+    }
+
+    private void UpdatePetLook()
+    {
+        if (_size != "pet" || _hwnd == IntPtr.Zero || Pet.ActualWidth <= 0 || PresentationSource.FromVisual(Pet) is null) return;
+
+        // PointToScreen i Bounds są w pikselach urządzenia także na monitorach o różnym DPI.
+        var center = Pet.PointToScreen(new System.Windows.Point(Pet.ActualWidth / 2, Pet.ActualHeight / 2));
+        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)center.X, (int)center.Y)).Bounds;
+        var position = (center.X - screen.Left) / screen.Width;
+        _pet.LookToward(position < 0.4 ? 1 : position > 0.6 ? -1 : 0);
     }
 
     private void DockTo(DockEdge edge)
@@ -962,7 +991,7 @@ public partial class MainWindow : Window, ISettingsHost
             Top = area.Y + 120 - ShadowMargin;
         }
         var card = CardBox();
-        (Left, Top) = Docking.Place(_dock, card.Width, card.Height, area, ShadowMargin, card.X, card.Y, _anchor);
+        (Left, Top) = PlaceWidget(card, area);
     }
 
     private void RestoreSettings()
@@ -1097,6 +1126,18 @@ public partial class MainWindow : Window, ISettingsHost
     {
         var menu = new ContextMenu();
         var viewItem = new MenuItem { Header = "Widok" };
+        var skinItem = new MenuItem { Header = "Strój Peta" };
+        var traySkin = new ToolStripMenuItem("Strój Peta");
+        foreach (var (key, label) in PetSkins.All)
+        {
+            var item = new MenuItem { Header = label };
+            var trayItem = new ToolStripMenuItem(label);
+            item.Click += (_, _) => Safely("strój Peta", () => ChangeConfig(c => c with { PetSkin = key }));
+            trayItem.Click += (_, _) => Safely("strój Peta", () => ChangeConfig(c => c with { PetSkin = key }));
+            skinItem.Items.Add(item);
+            traySkin.DropDownItems.Add(trayItem);
+            _skinItems.Add((key, item, trayItem));
+        }
         foreach (var (key, label) in Views)
         {
             var item = new MenuItem { Header = label };
@@ -1149,6 +1190,7 @@ public partial class MainWindow : Window, ISettingsHost
         var settingsItem = new MenuItem { Header = "Ustawienia…" };
         settingsItem.Click += (_, _) => Safely("ustawienia", OpenSettings);
         menu.Items.Add(viewItem);
+        menu.Items.Add(skinItem);
         menu.Items.Add(_soundsItem);
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(_muteItem);
@@ -1173,6 +1215,7 @@ public partial class MainWindow : Window, ISettingsHost
             _trayViewItems[key] = item;
         }
         trayMenu.Items.Add(trayView);
+        trayMenu.Items.Add(traySkin);
         trayMenu.Items.Add(trayDock);
         _trayAutostart = new ToolStripMenuItem("Uruchamiaj przy logowaniu") { Checked = AutostartService.IsEnabled() };
         _trayAutostart.Click += (_, _) => Safely("zasobnik: autostart", () => SetAutostart(!_trayAutostart.Checked));
@@ -1307,7 +1350,13 @@ public partial class MainWindow : Window, ISettingsHost
         // przy dolnej krawędzi nachodziłby na nią) ani gdy okno się przesuwa (wyspa rozwijana przy boku
         // ekranu przesuwa swój środek).
         PanelBody.SizeChanged += (_, _) => RepositionPanel();
-        LocationChanged += (_, _) => RepositionPanel();
+        Pet.Loaded += (_, _) => UpdatePetLook();
+        LocationChanged += (_, _) =>
+        {
+            RepositionPanel();
+            UpdatePetLook();
+        };
+        DpiChanged += (_, _) => UpdatePetLook();
         // Rozwijanie wyspy i zmiana widoku zmieniają rozmiar okna — przyklejone trzyma swoje miejsce.
         SizeChanged += (_, _) => Safely("położenie", PlaceDocked);
 

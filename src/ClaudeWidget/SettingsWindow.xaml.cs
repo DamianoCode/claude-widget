@@ -52,6 +52,8 @@ public partial class SettingsWindow : Window
     {
         _host = host;
         InitializeComponent();
+        foreach (var (key, label) in PetSkins.All)
+            PetSkinCombo.Items.Add(Item(label, key));
         foreach (var (duration, label) in MuteOptions.All)
         {
             var button = new Button { Content = label };
@@ -90,6 +92,8 @@ public partial class SettingsWindow : Window
             OpacitySlider.Value = config.OpacityPercent;
             OpacityText.Text = $"{config.OpacityPercent}%";
             FullscreenCheck.IsChecked = config.HidesOnFullscreen;
+            PetSkinCombo.SelectedItem = PetSkinCombo.Items.OfType<ComboBoxItem>()
+                .First(item => (string)item.Tag == config.PetSkinKey);
         }
         finally
         {
@@ -102,6 +106,11 @@ public partial class SettingsWindow : Window
         SoundsCheck.Click += (_, _) => _host.UpdateConfig(c => c with { Sounds = SoundsCheck.IsChecked == true });
         NotificationsCheck.Click += (_, _) => _host.UpdateConfig(c => c with { Notifications = NotificationsCheck.IsChecked == true });
         FullscreenCheck.Click += (_, _) => _host.UpdateConfig(c => c with { HideOnFullscreen = FullscreenCheck.IsChecked == true });
+        PetSkinCombo.SelectionChanged += (_, _) =>
+        {
+            if (!_loading && PetSkinCombo.SelectedItem is ComboBoxItem { Tag: string key })
+                _host.UpdateConfig(c => c with { PetSkin = key });
+        };
         WaitingSound.SelectionChanged += (_, _) => OnSoundChosen(WaitingSound, AlertKind.Waiting);
         DoneSound.SelectionChanged += (_, _) => OnSoundChosen(DoneSound, AlertKind.NewResult);
         WaitingPlay.Click += (_, _) => _host.PreviewSound(AlertKind.Waiting, _host.Config.SoundWaiting);
