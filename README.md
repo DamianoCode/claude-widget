@@ -92,8 +92,9 @@ kineskop włącza się na nowo.
 Pet obraca się w stronę środka ekranu, na którym stoi. W pobliżu środka patrzy przed siebie.
 
 W menu **Strój Peta** (także w zasobniku) oraz w ustawieniach wybierzesz robota, strój
-„Bluza i sneakersy” albo strój świąteczny z czapką Mikołaja. Wybór działa od razu
-i zapisuje się w pliku ustawień jako `petSkin` (`classic`, `portfolio` lub `christmas`).
+„Bluza i sneakersy”, strój świąteczny z czapką Mikołaja albo **Pikselowy (pierwsza wersja)**, czyli
+kanciastego, pixel-artowego robota z wersji 1.7.0. Wybór działa od razu i zapisuje się w pliku
+ustawień jako `petSkin` (`classic`, `portfolio`, `christmas` lub `pixel`).
 
 Obok robota stoją liczniki tego, co wymaga Twojej akcji, w kolejności świateł: czerwony (ile sesji
 czeka) nad zielonym (ile ma nowy wynik). Przy jednej sesji wymagającej akcji wystarczy alert lub

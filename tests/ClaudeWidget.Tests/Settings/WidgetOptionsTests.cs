@@ -187,3 +187,24 @@ public class WidgetConfigTests
         Assert.NotEqual(a.WithoutPlacement(), (b with { Volume = 60 }).WithoutPlacement());
     }
 }
+
+public class PetSkinsTests
+{
+    [Theory]
+    [InlineData("classic", "classic")]
+    [InlineData("portfolio", "portfolio")]
+    [InlineData("christmas", "christmas")]
+    [InlineData("pixel", "pixel")]
+    [InlineData(null, "classic")]
+    [InlineData("neon", "classic")]
+    public void Unknown_skins_fall_back_to_the_robot(string? key, string expected)
+    {
+        Assert.Equal(expected, PetSkins.Normalize(key));
+    }
+
+    [Fact]
+    public void Every_listed_skin_survives_normalization()
+    {
+        Assert.All(PetSkins.All, skin => Assert.Equal(skin.Key, PetSkins.Normalize(skin.Key)));
+    }
+}
