@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.0](https://github.com/DamianoCode/claude-widget/compare/v1.8.0...v1.9.0) (2026-11-18)
+
+
+### Nowe funkcje
+
+* pikselowy Pet z 1.7.0 jako strój do wyboru ([437a405](https://github.com/DamianoCode/claude-widget/commit/437a40582823a9bfab4fee653819c69a87682561))
+* pikselowy Pet z wersji 1.7.0 jako strój do wyboru ([cdb9718](https://github.com/DamianoCode/claude-widget/commit/cdb9718fcfc8ff7035c5ef01cd1ab1221438da23))
+
 ## [1.8.0](https://github.com/DamianoCode/claude-widget/compare/v1.7.0...v1.8.0) (2026-11-18)
 
 
