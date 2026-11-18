@@ -5,6 +5,7 @@
 using System.Text.Json;
 using ClaudeWidget.Core;
 using ClaudeWidget.Core.Hook;
+using ClaudeWidget.Core.Ide;
 using ClaudeWidget.Hook;
 using StatusLineEngine = ClaudeWidget.Core.StatusLine.StatusLineEngine;
 
@@ -32,15 +33,15 @@ static void RunHook()
     {
         // obserwacja nigdy nie może zepsuć sesji — hook niczego nie wypisuje i zawsze kończy się
         // kodem 0. PermissionRequest traktuje wypisany tekst jako decyzję o zgodzie.
-        if (!AttendedSession.IsAttended()) return;
+        var pid = ParentProcess.GetParentProcessId();
+        if (!IsAttended(pid)) return;
 
         var input = ReadInput();
         if (input is null) return;
 
         var paths = WidgetPaths.FromEnvironment();
-        var pid = ParentProcess.GetParentProcessId();
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        HookEngine.Handle(paths, input.Value, pid, now);
+        HookEngine.Handle(paths, input.Value, pid, now, OrcaPlace.FromEnvironment(Environment.GetEnvironmentVariable));
     }
     catch
     {
@@ -55,7 +56,7 @@ static void RunStatusLine()
     try
     {
         // stan widżetu jest dodatkiem do linii statusu, nie jej warunkiem
-        if (AttendedSession.IsAttended())
+        if (IsAttended(ParentProcess.GetParentProcessId()))
         {
             var paths = WidgetPaths.FromEnvironment();
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -80,7 +81,7 @@ static void RunTee()
     var bytes = ReadAllInput();
     try
     {
-        if (AttendedSession.IsAttended() && Parse(bytes) is { } input)
+        if (IsAttended(ParentProcess.GetParentProcessId()) && Parse(bytes) is { } input)
         {
             StatusLineEngine.Record(WidgetPaths.FromEnvironment(), input, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         }
@@ -92,6 +93,10 @@ static void RunTee()
     using var stdout = Console.OpenStandardOutput();
     stdout.Write(bytes);
 }
+
+// pid — proces Claude Code, rodzic hooka; jego rodzica sprawdza się tylko w sesjach z Orca.
+static bool IsAttended(int pid) =>
+    AttendedSession.IsAttended(Environment.GetEnvironmentVariable, () => ParentProcess.IsChildOfOrca(pid));
 
 static byte[] ReadAllInput()
 {

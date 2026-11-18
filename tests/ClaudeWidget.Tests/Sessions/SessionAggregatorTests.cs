@@ -44,6 +44,41 @@ public sealed class SessionAggregatorTests
     }
 
     [Fact]
+    public void Orca_place_from_the_state_file_reaches_the_session()
+    {
+        using var dir = new TempDir();
+        var paths = new WidgetPaths(dir.Path);
+        WriteState(paths, "s1", new SessionState { State = SessionStates.Working, Since = 1000, Pid = 111, UpdatedAt = 1000, OrcaSessionId = "a1", OrcaTerminal = "term_1" });
+        WriteState(paths, "s2", new SessionState { State = SessionStates.Working, Since = 1000, Pid = 222, UpdatedAt = 1000 });
+        var probe = new FakeProcessProbe().Alive(111).Alive(222);
+
+        var sessions = new SessionAggregator(paths, probe).GetSessions(nowMs: 2000);
+
+        Assert.Equal(new ClaudeWidget.Core.Ide.OrcaPlace("a1", "term_1"), sessions.Single(s => s.Id == "s1").Orca);
+        Assert.Null(sessions.Single(s => s.Id == "s2").Orca);
+    }
+
+    [Fact]
+    public void An_orca_session_is_named_like_in_orca()
+    {
+        using var dir = new TempDir();
+        var paths = new WidgetPaths(dir.Path);
+        WriteState(paths, "s1", new SessionState { State = SessionStates.Working, Since = 1000, Pid = 111, UpdatedAt = 1000, Cwd = "C:\\w\\Orca", OrcaSessionId = "a1" });
+        WriteState(paths, "s2", new SessionState { State = SessionStates.Working, Since = 1000, Pid = 222, UpdatedAt = 1000, Cwd = "C:\\apps\\api", OrcaSessionId = "gone" });
+        var probe = new FakeProcessProbe().Alive(111).Alive(222);
+        var labels = new Dictionary<string, ClaudeWidget.Core.Ide.OrcaLabel> { ["a1"] = new("Integracja widgetu z Orca IDE", "Feat orca ide integration") };
+
+        var sessions = new SessionAggregator(paths, probe).GetSessions(nowMs: 2000, orcaLabels: labels);
+
+        var named = sessions.Single(s => s.Id == "s1");
+        Assert.Equal("Integracja widgetu z Orca IDE", named.Name);
+        Assert.Equal("Feat orca ide integration", named.Project);
+        var unknown = sessions.Single(s => s.Id == "s2");
+        Assert.Equal("api", unknown.Name);
+        Assert.Equal("api", unknown.Project);
+    }
+
+    [Fact]
     public void Done_session_not_yet_seen_is_a_new_result()
     {
         using var dir = new TempDir();

@@ -178,6 +178,18 @@ wynik uznaje się za przejrzany dopiero wtedy, gdy terminal tej sesji jest aktyw
 patrzysz. Bez rozszerzenia (np. gdy VS Code zainstalujesz po widżecie — dojdzie przy następnym
 starcie widżetu) kliknięcie tylko wyciąga właściwe okno.
 
+### Sesje w Orca
+
+Widżet pokazuje też sesje uruchomione w Orca, zarówno w jej
+terminalach, jak i w czatach. Czaty dostają te same światła co sesje w terminalu (czeka, pracuje,
+nowy wynik), a w panelu nazywają się tak jak w Orca: tytuł czatu, pod nim nazwa workspace. Kliknięcie takiej sesji wyciąga okno Orca i przełącza je przez CLI Orca (`orca.exe`):
+
+- sesja w terminalu Orca: Orca pokazuje dokładnie ten terminal,
+- czat Orca: Orca pokazuje workspace czatu. Konkretnej karty czatu CLI Orca jeszcze nie umie wybrać.
+
+Nie trzeba niczego doinstalowywać. Widżet sam znajduje `orca.exe` w instalacji Orca albo w `PATH`.
+Gdy Orca nie odpowiada, zostaje samo wyciągnięte okno, a przyczyna trafia do `widget.log`.
+
 ## Jak to działa
 
 - `ClaudeWidgetHook.exe hook` dostaje zdarzenia sesji od Claude Code (start, polecenie, prośba

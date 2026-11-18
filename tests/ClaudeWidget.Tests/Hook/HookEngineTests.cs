@@ -76,6 +76,21 @@ public sealed class HookEngineTests
     }
 
     [Fact]
+    public void An_event_that_changes_nothing_still_records_the_orca_place()
+    {
+        using var dir = new TempDir();
+        var hook = new HookHarness(dir.Path, "o1");
+        hook.Send("UserPromptSubmit");
+
+        // PostToolUse bez prośby o zgodę nie zmienia stanu.
+        hook.Orca = new ClaudeWidget.Core.Ide.OrcaPlace("a1", null);
+        var result = hook.Send("PostToolUse", HookHarness.Extra("""{"tool_name":"Read"}"""));
+
+        Assert.Equal(SessionStates.Working, result!.State);
+        Assert.Equal("a1", result.OrcaSessionId);
+    }
+
+    [Fact]
     public void A_denied_permission_ends_the_wait_when_the_batch_resolves()
     {
         // A denial produces no PostToolUse at all; the batch event is the only sign.

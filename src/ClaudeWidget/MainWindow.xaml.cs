@@ -57,6 +57,13 @@ public partial class MainWindow : Window, ISettingsHost
     private readonly SessionAggregator _aggregator;
     private readonly HostResolver _hostResolver = new();
     private readonly VsCodeBridge _vsCode;
+    private OrcaCli? _orcaCli;
+    private OrcaNavigator? _orca;
+    private CancellationTokenSource? _orcaShow;
+    private IReadOnlyDictionary<string, OrcaLabel> _orcaLabels = new Dictionary<string, OrcaLabel>();
+    private DateTime _orcaLabelsAt;
+    private string _orcaLabelsFor = "";
+    private bool _orcaLabelsRunning;
     private readonly AlertPlanner _alerts = new();
     private readonly SessionNotifier _notifier;
     private MenuItem _soundsItem = null!, _notificationsItem = null!, _muteItem = null!, _unmuteItem = null!;
@@ -189,7 +196,7 @@ public partial class MainWindow : Window, ISettingsHost
     private void UpdateView()
     {
         var nowMs = NowMs();
-        _sessions = _aggregator.GetSessions(nowMs, _agentsSnapshot);
+        _sessions = _aggregator.GetSessions(nowMs, _agentsSnapshot, _orcaLabels);
         AnnounceChanges(nowMs);
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
         // Bez czasu pomiaru (0 z pliku bez updatedAt) nie ma ani świeżości, ani prognozy tempa.
@@ -356,6 +363,9 @@ public partial class MainWindow : Window, ISettingsHost
 
     private async Task ShowSessionTerminalAsync(SessionInfo session)
     {
+        // Wygrywa ostatni klik: przełączanie Orca po wcześniejszym kliknięciu, jeśli jeszcze trwa,
+        // nie może przestawić Orca, gdy idziesz już gdzie indziej.
+        _orcaShow?.Cancel();
         SetSeen(session.Id);
         if (session.IsBackground)
         {
@@ -381,6 +391,89 @@ public partial class MainWindow : Window, ISettingsHost
         if (NativeMethods.IsIconic(target)) NativeMethods.ShowWindow(target, NativeMethods.SwRestore);
         NativeMethods.SetForegroundWindow(target);
         if (bridgeWindow is not null) _vsCode.RequestFocus(host.Chain, NowMs());
+        // Sesja w Orca: okno Orca jest już z przodu, a Orca przełącza się na terminal albo workspace
+        // sesji. Rozstrzyga proces Orca jako host, nie zmienne Orca — te dziedziczy też np. VS Code
+        // otwarte z terminala Orca. Sesja bez miejsca z hooka (np. z listy `claude agents`, zanim
+        // hook cokolwiek zapisał) trafia do Orca po samym katalogu. Przełączanie idzie w tle:
+        // kilka wywołań orca.exe trwa nawet parę sekund, a panel ma się zamknąć od razu.
+        if (IsOrcaProcess(host.HostPid)) _ = ShowInOrcaAsync(session, session.Orca ?? new OrcaPlace(null, null));
+    }
+
+    private async Task ShowInOrcaAsync(SessionInfo session, OrcaPlace place)
+    {
+        _orca ??= FindOrcaCli() is { } cli ? new OrcaNavigator(cli) : null;
+        if (_orca is null)
+        {
+            WidgetLog.Write(_paths, "Orca: nie znaleziono orca.exe — zostaje samo okno Orca");
+            return;
+        }
+        using var show = new CancellationTokenSource();
+        _orcaShow = show;
+        try
+        {
+            var result = await _orca.ShowAsync(place, session.Cwd, show.Token);
+            if (!show.IsCancellationRequested && (result.Errors.Count > 0 || result.Shown == OrcaShown.NotFound))
+            {
+                WidgetLog.Write(_paths, $"Orca: sesja {session.Id} — {result.Shown} ({string.Join("; ", result.Errors)})");
+            }
+        }
+        catch (Exception error)
+        {
+            // Zadanie w tle nie ma kto obsłużyć — błąd idzie do logu, a widżet działa dalej.
+            WidgetLog.Write(_paths, $"Orca: {error.Message}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_orcaShow, show)) _orcaShow = null;
+        }
+    }
+
+    private OrcaCli? FindOrcaCli() =>
+        _orcaCli ??= OrcaCli.Find(File.Exists, Environment.GetEnvironmentVariable("LOCALAPPDATA"), Environment.GetEnvironmentVariable("PATH"));
+
+    // Nazwy sesji z Orca: co 15 s, a od razu, gdy pojawi się nowa sesja z Orca. Bez żadnej sesji
+    // z Orca widżet w ogóle nie uruchamia orca.exe.
+    private async Task RefreshOrcaLabelsAsync()
+    {
+        if (_orcaLabelsRunning) return;
+        var ids = string.Join(",", _sessions.Select(s => s.Orca?.AgentSessionId).OfType<string>().Order(StringComparer.Ordinal));
+        if (ids.Length == 0)
+        {
+            _orcaLabelsFor = "";
+            return;
+        }
+        if (ids == _orcaLabelsFor && DateTime.UtcNow - _orcaLabelsAt < TimeSpan.FromSeconds(15)) return;
+        if (FindOrcaCli() is not { } cli) return;
+
+        _orcaLabelsRunning = true;
+        _orcaLabelsAt = DateTime.UtcNow;
+        _orcaLabelsFor = ids;
+        try
+        {
+            if (await Task.Run(() => OrcaLabel.ListAsync(cli, CancellationToken.None)) is { } labels)
+            {
+                _orcaLabels = labels;
+                UpdateView();
+            }
+        }
+        finally
+        {
+            _orcaLabelsRunning = false;
+        }
+    }
+
+    private static bool IsOrcaProcess(int pid)
+    {
+        if (pid == 0) return false;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.ProcessName.Equals("Orca", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     // Pliki ~/.claude/ide/*.lock czyta się przy każdym użyciu: to kilka małych plików, a okna IDE
@@ -1395,7 +1488,9 @@ public partial class MainWindow : Window, ISettingsHost
         _configDebounce.Tick += (_, _) => { _configDebounce.Stop(); Safely("ustawienia z pliku", ReloadConfig); };
         MouseEnter += (_, _) => UpdateOpacity();
         MouseLeave += (_, _) => UpdateOpacity();
-        _agentsTimer.Tick += async (_, _) => await Safely2("lista sesji", RunAgentsTickAsync);
+        _agentsTimer.Tick += async (_, _) => await Task.WhenAll(
+            Safely2("lista sesji", RunAgentsTickAsync),
+            Safely2("nazwy z Orca", RefreshOrcaLabelsAsync));
         _cleanupTimer.Tick += (_, _) => Safely("sprzątanie", () => _aggregator.CleanupOrphans());
         _debounceTimer.Tick += (_, _) => { _debounceTimer.Stop(); Safely("obserwacja", UpdateView); };
     }

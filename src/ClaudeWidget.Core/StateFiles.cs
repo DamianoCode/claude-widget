@@ -56,6 +56,12 @@ public sealed record SessionState
     /// <summary>PID procesu Claude Code, rodzica hooka.</summary>
     public int? Pid { get; init; }
 
+    /// <summary>Identyfikator agenta Orca (<c>ORCA_AGENT_SESSION_ID</c>); tylko w sesjach uruchomionych przez Orca.</summary>
+    public string? OrcaSessionId { get; init; }
+
+    /// <summary>Uchwyt terminala Orca (<c>ORCA_TERMINAL_HANDLE</c>); tylko w sesjach w terminalu Orca.</summary>
+    public string? OrcaTerminal { get; init; }
+
     /// <summary>Czas ostatniego zapisu (ms od epoki). Proces, który wystartował później, nie jest tą sesją.</summary>
     public long UpdatedAt { get; init; }
 }
