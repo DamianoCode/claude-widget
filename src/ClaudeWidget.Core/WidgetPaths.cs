@@ -6,7 +6,7 @@ public enum SessionFileKind { State, Usage, Seen }
 /// Gdzie leży stan widżetu. Te same ścieżki co w wersji z Node i PowerShellem, więc znaczniki
 /// przejrzenia, pozycja okna i stan otwartych sesji przechodzą przez aktualizację.
 /// Każda sesja ma osobny plik na piszącego (hook: state, statusline: usage, widżet: seen),
-/// więc nikt nikomu nie nadpisuje pól.
+/// więc nikt nikomu nie nadpisuje pól. Wyjątkiem jest limits.json (statusline i widżet) — patrz AccountLimits.
 /// </summary>
 public sealed class WidgetPaths
 {

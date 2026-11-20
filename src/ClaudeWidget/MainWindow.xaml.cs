@@ -73,6 +73,10 @@ public partial class MainWindow : Window, ISettingsHost
     private string? _registeredHotkey;
     private string _hotkeyProblem = "";
     private readonly UpdateService _updates = new();
+    private LimitsPoller? _limitsPoller;
+
+    /// <summary>Widżet przedstawia się serwerowi własną nazwą i wersją, a nie jako Claude Code.</summary>
+    private static readonly string UserAgent = $"claude-widget/{typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"}";
     private readonly Dictionary<string, RadialGradientBrush> _litFill = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _fullGlow = [];
     private readonly Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> _miniGlow = [];
@@ -1203,8 +1207,8 @@ public partial class MainWindow : Window, ISettingsHost
         _hoverTimer.Start();
     }
 
-    // Bez danych ze statusline (cudza, której instalator nie mógł bezpiecznie podpiąć) nie ma limitów
-    // ani kontekstu — panel mówi dlaczego i jak to naprawić, zamiast pokazywać puste paski.
+    // Bez danych ze statusline (cudza, której instalator nie mógł bezpiecznie podpiąć) nie ma kontekstu
+    // sesji — panel mówi dlaczego i jak to naprawić. Limity konta przychodzą wtedy z serwera.
     private void UpdateStatusLineHint()
     {
         var kind = ClaudeSettings.Inspect(ClaudeSettings.DefaultPath);
@@ -1585,6 +1589,9 @@ public partial class MainWindow : Window, ISettingsHost
         _agentsTimer.Start();
         _cleanupTimer.Start();
         _ = _updates.StartAsync(message => WidgetLog.Write(_paths, message), CancellationToken.None);
+        // Limity z serwera: widoczne także bez statusline (Orca, IDE, tryb -p), bez konfiguracji.
+        _limitsPoller = LimitsPoller.Create(_paths, UserAgent, message => WidgetLog.Write(_paths, message));
+        _limitsPoller.Start();
         _ = Task.Run(() => Safely("rozszerzenie VS Code", () => VsCodeExtensionInstaller.InstallIfNeeded(_paths, message => WidgetLog.Write(_paths, message))));
         // Tylko zainstalowany widżet: uruchomienie deweloperskie wpisałoby swoją ścieżkę do settings.json.
         if (_updates.IsInstalled) _ = Task.Run(InstallHooks.ReconcileSettings);
@@ -1598,6 +1605,7 @@ public partial class MainWindow : Window, ISettingsHost
         _configDebounce.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         SystemParameters.StaticPropertyChanged -= OnSystemParameterChanged;
+        _limitsPoller?.Dispose();
         _watcher?.Dispose();
         _configWatcher?.Dispose();
         _hotkey?.Dispose();

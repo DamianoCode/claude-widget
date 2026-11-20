@@ -24,7 +24,9 @@ Instalacja nie wymaga uprawnień administratora ani Node.js. Widżet trafia do
 (kopia zapasowa ląduje obok jako `settings.json.bak-widget-*`) i uruchamia się przy logowaniu.
 Twoje własne hooki i ustawienia zostają.
 
-Wymagania: Windows 10 lub 11 (x64) i Claude Code. Limity konta pokazują się w planach Pro i Max.
+Wymagania: Windows 10 lub 11 (x64) i Claude Code. Limity konta pokazują się w planach Pro i Max
+— także wtedy, gdy pracujesz bez terminala (Orca, rozszerzenie IDE, `claude -p`): widżet pobiera je
+wtedy sam, z logowania Claude Code, bez żadnej konfiguracji.
 
 **Aktualizacje** przychodzą same: widżet przy starcie i co kilka godzin sprawdza nowe wydanie,
 pobiera je w tle (zwykle jako małą paczkę różnicową) i instaluje przy następnym uruchomieniu,
@@ -49,7 +51,8 @@ oddaje je sam, więc Twoja statusline działa i bez widżetu. Odinstalowanie prz
 w oryginale; widżet sprawdza to też przy każdym starcie (np. gdy odinstalujesz Git Bash).
 
 W pozostałych przypadkach (złożona komenda, brak Git Bash — wtedy Claude Code uruchamia statusline
-przez PowerShell) widżet działa bez limitów i kontekstu, a panel pokazuje podpowiedź. Wystarczy
+przez PowerShell) widżet pokazuje limity (pobiera je sam), ale bez procentu kontekstu sesji,
+a panel pokazuje podpowiedź. Wystarczy
 jedna linia na początku Twojego skryptu, która przekaże mu wejście (wyjście przekaźnika się
 wyrzuca, więc wygląd zostaje):
 
@@ -198,9 +201,17 @@ Gdy Orca nie odpowiada, zostaje samo wyciągnięte okno, a przyczyna trafia do `
   więc startuje w kilkadziesiąt milisekund i nie potrzebuje Node ani runtime .NET.
 - `ClaudeWidgetHook.exe statusline` to jednocześnie linia statusu w terminalu i źródło danych
   o kontekście sesji oraz limitach konta (`<sesja>.usage.json`, `limits.json`).
-- `ClaudeWidget.exe` (WPF, .NET 10) czyta te pliki i rysuje widżet. Sam zapisuje tylko
-  `<sesja>.seen.json` — kiedy przejrzałeś wynik — i sprząta pliki sesji zamkniętych bez
-  SessionEnd (zamknięte okno terminala, awaria) oraz porzucone pliki starsze niż doba. Sesję
+- Gdy żadna statusline nie odświeżyła limitów od 5 minut (np. agenci w Orce, IDE, `claude -p`),
+  widżet pobiera je sam z `api.anthropic.com/api/oauth/usage` (tego samego endpointu używa panel
+  limitów w Orce) i zapisuje do tego samego `limits.json`.
+  Używa tokenu logowania Claude Code (`~\.claude\.credentials.json`, z `CLAUDE_CONFIG_DIR`, gdy
+  jest ustawiony) **tylko do odczytu**: nigdy go nie odświeża ani nie zapisuje. Token żyje kilka
+  godzin; gdy wygaśnie, widżet czeka, aż odnowi go następne uruchomienie Claude Code. Konto
+  rozliczane kluczem API nie ma tych limitów, więc widżet wtedy niczego nie pobiera.
+- `ClaudeWidget.exe` (WPF, .NET 10) czyta te pliki i rysuje widżet. Sam zapisuje
+  `limits.json` (gdy pobiera limity z serwera) i `<sesja>.seen.json` — kiedy przejrzałeś
+  wynik — i sprząta pliki sesji zamkniętych bez SessionEnd (zamknięte okno terminala, awaria)
+  oraz porzucone pliki starsze niż doba. Sesję
   uznaje za zamkniętą, gdy jej proces nie żyje albo jego PID dostał już inny proces.
 - Widżet pyta też `claude agents --json --all` o listę sesji — co 4 s, gdy coś pracuje albo czeka
   w tle lub panel jest otwarty, a poza tym co 20 s. Dzięki temu pokazuje **sesje w tle** (widok
@@ -223,7 +234,10 @@ tylko taki, którego zakończenie widżet widział.
 - Po zatwierdzeniu długiego polecenia czerwone gaśnie dopiero, gdy polecenie się skończy —
   Claude Code nie zgłasza hookom samej chwili udzielenia zgody.
 - Kliknięcie sesji aktywuje okno terminala, ale nie przełącza karty w Windows Terminal.
-- Limity odświeżają się tylko wtedy, gdy któraś sesja jest aktywna; „stan z …” mówi, jak są świeże.
+- Limity odświeżają się co ok. 5 minut, dopóki token logowania Claude Code jest ważny (kilka godzin
+  od ostatniego użycia Claude); „stan z …” mówi, jak są świeże.
+- Endpoint limitów nie jest oficjalnie udokumentowany. Gdyby się zmienił, widżet wraca do samych
+  danych ze statusline.
 
 ## Rozwój
 
