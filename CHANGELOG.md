@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.0](https://github.com/DamianoCode/claude-widget/compare/v1.10.0...v1.11.0) (2026-11-20)
+
+
+### Nowe funkcje
+
+* limity konta z serwera, także bez statusline ([66204b5](https://github.com/DamianoCode/claude-widget/commit/66204b5afc30d371c246a2e7e365a50ba792cc93))
+* limity konta z serwera, także bez statusline ([c7af741](https://github.com/DamianoCode/claude-widget/commit/c7af7415aa59946aefcadf70c0971761aa47c4ca))
+
 ## [1.10.0](https://github.com/DamianoCode/claude-widget/compare/v1.9.0...v1.10.0) (2026-11-18)
 
 
