@@ -92,7 +92,11 @@ public sealed record LimitWindow
     public double? ResetsAt { get; init; }
 }
 
-/// <summary><c>limits.json</c> — limity konta z ostatniego odczytu statusline dowolnej sesji.</summary>
+/// <summary>
+/// <c>limits.json</c> — limity konta z ostatniego odczytu. Jedyny plik z dwoma piszącymi: statusline
+/// dowolnej sesji i widżet (endpoint limitów, gdy statusline nie działa). Oba zapisują pełny odczyt
+/// konta, a widżet nie nadpisuje odczytu nowszego niż swoje zapytanie.
+/// </summary>
 public sealed record AccountLimits
 {
     public LimitWindow? FiveHour { get; init; }
