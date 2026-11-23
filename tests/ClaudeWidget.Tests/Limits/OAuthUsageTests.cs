@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClaudeWidget.Core;
 using ClaudeWidget.Core.Limits;
 
 namespace ClaudeWidget.Tests.Limits;
@@ -28,6 +29,7 @@ public sealed class OAuthUsageTests
         Assert.Equal(12, limits.SevenDay!.Pct);
         Assert.Equal(DateTimeOffset.Parse("2026-11-24T08:00:00Z").ToUnixTimeSeconds(), limits.SevenDay.ResetsAt);
         Assert.Equal(Now, limits.UpdatedAt);
+        Assert.Equal(LimitSources.Server, limits.Source);
     }
 
     [Fact]

@@ -84,8 +84,60 @@ public static class OAuthUsage
         var fiveHour = ParseWindow(root, "five_hour");
         var sevenDay = ParseWindow(root, "seven_day");
         if (fiveHour is null && sevenDay is null) return null;
-        return new AccountLimits { FiveHour = fiveHour, SevenDay = sevenDay, UpdatedAt = nowMs };
+        return new AccountLimits { FiveHour = fiveHour, SevenDay = sevenDay, UpdatedAt = nowMs, Source = LimitSources.Server };
     }
+
+    /// <summary>
+    /// To z odpowiedzi, czego statusline nie poda: czy plan ma okno 5 h i limity pojedynczych modeli.
+    /// Lista <c>limits</c> opisuje każdy obowiązujący limit (<c>percent</c> to zużycie); gdy jej nie
+    /// ma, zostają dawne pola <c>seven_day_opus</c> / <c>seven_day_sonnet</c>.
+    /// </summary>
+    public static ServerLimits? ParseServer(JsonElement root, long nowMs)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        var hasFiveHour = root.TryGetProperty("five_hour", out var five) && five.ValueKind == JsonValueKind.Object;
+        var scoped = new List<ScopedLimit>();
+        if (root.TryGetProperty("limits", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in list.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object) continue;
+                var group = Text(entry, "group");
+                var model = entry.TryGetProperty("scope", out var scope) && scope.ValueKind == JsonValueKind.Object
+                    && scope.TryGetProperty("model", out var modelScope) && modelScope.ValueKind == JsonValueKind.Object
+                        ? Text(modelScope, "display_name")
+                        : null;
+                if (model is null)
+                {
+                    // Ogólny limit spoza tygodnia (okno sesji) — dowód, że plan ma okno 5 h.
+                    if (group is not null && group != "weekly") hasFiveHour = true;
+                    continue;
+                }
+                if (scoped.Any(limit => limit.Label == model && limit.Group == group)) continue;
+                scoped.Add(new ScopedLimit
+                {
+                    Label = model,
+                    Group = group,
+                    Pct = Number(entry, "percent") is double pct && double.IsFinite(pct) ? Math.Clamp(pct, 0, 100) : null,
+                    ResetsAt = entry.TryGetProperty("resets_at", out var reset) ? ResetSeconds(reset) : null,
+                });
+            }
+        }
+        else
+        {
+            foreach (var (key, label) in new[] { ("seven_day_opus", "Opus"), ("seven_day_sonnet", "Sonnet") })
+            {
+                if (ParseWindow(root, key) is { } window)
+                    scoped.Add(new ScopedLimit { Label = label, Group = "weekly", Pct = window.Pct, ResetsAt = window.ResetsAt });
+            }
+        }
+        return new ServerLimits { HasFiveHour = hasFiveHour, Scoped = scoped.Count > 0 ? scoped : null, FetchedAt = nowMs };
+    }
+
+    private static string? Text(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()!.Trim()
+            : null;
 
     private static LimitWindow? ParseWindow(JsonElement root, string name)
     {

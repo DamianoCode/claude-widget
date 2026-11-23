@@ -6,7 +6,7 @@ public enum UsagePollOutcome
     /// <summary>Limity zapisane.</summary>
     Ok,
 
-    /// <summary>Świeże limity już są (statusline aktywnej sesji) — zapytanie byłoby zbędne.</summary>
+    /// <summary>Świeże limity już są, a pełny odczyt serwera nie jest starszy niż <see cref="UsagePollPolicy.ServerInterval"/>.</summary>
     Fresh,
 
     /// <summary>Brak tokenu, token wygasł albo serwer już go odrzucił — czekamy na nowy od Claude Code.</summary>
@@ -21,7 +21,8 @@ public enum UsagePollOutcome
 
 /// <summary>
 /// Kiedy pytać serwer o limity. Endpoint ma własny limit zapytań (ten sam token odpytuje też
-/// Orca czy <c>/usage</c>), więc pytamy rzadko, a statusline aktywnej sesji ma pierwszeństwo.
+/// Orca czy <c>/usage</c>), więc pytamy rzadko. Przy aktywnej statusline — co <see cref="ServerInterval"/>,
+/// tylko po to, czego ona nie zna (plan, limity modeli).
 /// </summary>
 public static class UsagePollPolicy
 {
@@ -46,6 +47,25 @@ public static class UsagePollPolicy
         if (limits is not { UpdatedAt: > 0 }) return false;
         if (nowMs - limits.UpdatedAt >= Interval.TotalMilliseconds) return false;
         return EarliestResetMs(limits) is not long reset || reset > nowMs || limits.UpdatedAt > reset;
+    }
+
+    /// <summary>
+    /// Pełny odczyt z serwera (plan, limity modeli) odświeżamy co tyle także wtedy, gdy statusline
+    /// dostarcza świeże 5 h i tydzień — ona nie zna limitów pojedynczych modeli.
+    /// </summary>
+    public static readonly TimeSpan ServerInterval = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Czy nie trzeba pytać: świeży <c>limits.json</c> (z dowolnego źródła) i pełny odczyt serwera
+    /// nie starszy niż <see cref="ServerInterval"/>, bez resetu limitu modelu, który od tamtej pory minął.
+    /// </summary>
+    public static bool IsFresh(AccountLimits? limits, ServerLimits? server, long nowMs)
+    {
+        if (!IsFresh(limits, nowMs)) return false;
+        if (server is not { FetchedAt: > 0 } || nowMs - server.FetchedAt >= ServerInterval.TotalMilliseconds) return false;
+        return server.Scoped is not { } scoped || !scoped.Any(limit =>
+            limit.ResetsAt is double seconds && double.IsFinite(seconds)
+            && (long)(seconds * 1000) is var reset && reset <= nowMs && reset > server.FetchedAt);
     }
 
     /// <summary>Opóźnienie do następnej próby.</summary>

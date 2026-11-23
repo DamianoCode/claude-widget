@@ -71,13 +71,20 @@ public static class Formatting
 
     /// <summary>"stan z HH:mm" dzisiaj, a starszy odczyt — z datą. Brak znacznika czasu (0 albo null,
     /// tak wygląda plik limits.json bez pola updatedAt) — jak w widget.ps1, "brak danych".</summary>
-    public static string GetFreshnessText(long? updatedAt)
+    /// <param name="source">Kto zapisał odczyt (<see cref="LimitSources"/>); nieznane źródło się pomija.</param>
+    public static string GetFreshnessText(long? updatedAt, string? source = null)
     {
         if (updatedAt is not long ms || ms <= 0) return "brak danych o limitach";
         var at = GetLocalTime(ms);
-        return at.Date == DateTime.Now.Date
+        var text = at.Date == DateTime.Now.Date
             ? $"stan z {at.ToString("HH:mm", Culture)}"
             : $"stan z {at.ToString("dd.MM HH:mm", Culture)}";
+        return source switch
+        {
+            LimitSources.Server => $"{text} · z serwera",
+            LimitSources.StatusLine => $"{text} · ze statusline",
+            _ => text,
+        };
     }
 
     /// <summary>

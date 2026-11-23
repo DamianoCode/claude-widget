@@ -18,7 +18,8 @@ public enum UsageFetchStatus
     Failed,
 }
 
-public sealed record UsageFetchResult(UsageFetchStatus Status, AccountLimits? Limits = null, TimeSpan? RetryAfter = null, string? Detail = null);
+/// <param name="Server">Pełny odczyt (plan, limity modeli) — obok <paramref name="Limits"/> w kształcie statusline.</param>
+public sealed record UsageFetchResult(UsageFetchStatus Status, AccountLimits? Limits = null, TimeSpan? RetryAfter = null, string? Detail = null, ServerLimits? Server = null);
 
 /// <summary>
 /// Jedno zapytanie do endpointu limitów. Wyjątki sieciowe (brak sieci, przekroczony czas) przechodzą
@@ -61,10 +62,11 @@ public sealed class UsageClient(HttpClient http, string userAgent, TimeProvider 
         {
             await using var body = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellation).ConfigureAwait(false);
-            var limits = OAuthUsage.ParseResponse(document.RootElement, time.GetUtcNow().ToUnixTimeMilliseconds());
+            var nowMs = time.GetUtcNow().ToUnixTimeMilliseconds();
+            var limits = OAuthUsage.ParseResponse(document.RootElement, nowMs);
             return limits is null
                 ? new UsageFetchResult(UsageFetchStatus.Failed, Detail: "odpowiedź bez limitów 5 h i tygodniowego")
-                : new UsageFetchResult(UsageFetchStatus.Ok, limits);
+                : new UsageFetchResult(UsageFetchStatus.Ok, limits, Server: OAuthUsage.ParseServer(document.RootElement, nowMs));
         }
         catch (JsonException)
         {

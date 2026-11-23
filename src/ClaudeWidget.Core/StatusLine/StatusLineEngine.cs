@@ -43,6 +43,7 @@ public static class StatusLineEngine
                 FiveHour = LimitWindowFrom(fiveHour),
                 SevenDay = LimitWindowFrom(sevenDay),
                 UpdatedAt = nowMs,
+                Source = LimitSources.StatusLine,
             }, StateJson.Default.AccountLimits);
         }
     }

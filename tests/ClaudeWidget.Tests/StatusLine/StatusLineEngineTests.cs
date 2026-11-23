@@ -44,6 +44,7 @@ public sealed class StatusLineEngineTests
         Assert.Equal(1757868000, limits.FiveHour.ResetsAt);
         Assert.Equal(41.2, limits.SevenDay!.Pct);
         Assert.Equal(1758178800, limits.SevenDay.ResetsAt);
+        Assert.Equal(LimitSources.StatusLine, limits.Source);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ClaudeWidget.Core.Sessions;
+using ClaudeWidget.Core.Limits;
 using ClaudeWidget.Core.Settings;
 using Microsoft.Win32;
 
@@ -54,6 +55,8 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         foreach (var (key, label) in PetSkins.All)
             PetSkinCombo.Items.Add(Item(label, key));
+        LimitModeCombo.Items.Add(Item("ile zużyto", LimitDisplay.UsedKey));
+        LimitModeCombo.Items.Add(Item("ile zostało", LimitDisplay.LeftKey));
         foreach (var (duration, label) in MuteOptions.All)
         {
             var button = new Button { Content = label };
@@ -94,6 +97,8 @@ public partial class SettingsWindow : Window
             FullscreenCheck.IsChecked = config.HidesOnFullscreen;
             PetSkinCombo.SelectedItem = PetSkinCombo.Items.OfType<ComboBoxItem>()
                 .First(item => (string)item.Tag == config.PetSkinKey);
+            LimitModeCombo.SelectedItem = LimitModeCombo.Items.OfType<ComboBoxItem>()
+                .First(item => (string)item.Tag == LimitDisplay.Key(config.LimitMode));
         }
         finally
         {
@@ -106,6 +111,11 @@ public partial class SettingsWindow : Window
         SoundsCheck.Click += (_, _) => _host.UpdateConfig(c => c with { Sounds = SoundsCheck.IsChecked == true });
         NotificationsCheck.Click += (_, _) => _host.UpdateConfig(c => c with { Notifications = NotificationsCheck.IsChecked == true });
         FullscreenCheck.Click += (_, _) => _host.UpdateConfig(c => c with { HideOnFullscreen = FullscreenCheck.IsChecked == true });
+        LimitModeCombo.SelectionChanged += (_, _) =>
+        {
+            if (!_loading && LimitModeCombo.SelectedItem is ComboBoxItem { Tag: string key })
+                _host.UpdateConfig(c => c with { LimitDisplay = key });
+        };
         PetSkinCombo.SelectionChanged += (_, _) =>
         {
             if (!_loading && PetSkinCombo.SelectedItem is ComboBoxItem { Tag: string key })

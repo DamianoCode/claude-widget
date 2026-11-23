@@ -84,7 +84,9 @@ public partial class MainWindow : Window, ISettingsHost
     private readonly List<(Dictionary<string, Ellipse> Ellipses, Dictionary<string, TextBlock> Counts, Dictionary<string, System.Windows.Media.Effects.DropShadowEffect> Glow)> _lightSets = [];
     private readonly Dictionary<string, long> _dwell = [];
 
-    private MeterControl _m5h = null!, _mWeek = null!, _mContext = null!, _p5h = null!, _pWeek = null!, _i5h = null!, _iWeek = null!;
+    private MeterControl _mContext = null!;
+    private LimitMeterList _cardLimits = null!, _panelLimits = null!, _islandLimits = null!;
+    private ServerLimits? _lastServerLimits;
     private Style _rowStyle = null!, _waitingRowStyle = null!;
     private readonly PetControl _pet = new();
     // Pierwsza, pikselowa wersja Peta — wybierana jako strój „pixel”; tworzona dopiero wtedy.
@@ -179,18 +181,13 @@ public partial class MainWindow : Window, ISettingsHost
 
     private void BuildMeters()
     {
-        _m5h = new MeterControl("Limit 5 h", CardInner, 11, "#A6A6A6", 10);
-        _mWeek = new MeterControl("Tydzień", CardInner, 11, "#A6A6A6", 10);
-        _mContext = new MeterControl("Kontekst sesji", CardInner, 11, "#A6A6A6", 8);
-        foreach (var meter in new[] { _m5h, _mWeek, _mContext }) Meters.Children.Add(meter.Root);
+        // Kontekst należy do sesji, nie do limitów konta — stoi przy niej i nie podlega trybowi „zostało”.
+        _mContext = new MeterControl("Kontekst sesji", CardInner, 11, "#A6A6A6", 0);
+        ContextMeter.Children.Add(_mContext.Root);
 
-        _p5h = new MeterControl("Limit 5 h", PanelInner, 12, "#C8C8C8", 10);
-        _pWeek = new MeterControl("Limit tygodniowy", PanelInner, 12, "#C8C8C8", 0);
-        foreach (var meter in new[] { _p5h, _pWeek }) PanelLimits.Children.Add(meter.Root);
-
-        _i5h = new MeterControl("5 h", 80);
-        _iWeek = new MeterControl("tydz.", 80);
-        foreach (var meter in new[] { _i5h, _iWeek }) IslandMeters.Children.Add(meter.Root);
+        _cardLimits = new LimitMeterList(Meters, row => row.CardLabel, label => new MeterControl(label, CardInner, 11, "#A6A6A6", 10));
+        _panelLimits = new LimitMeterList(PanelLimits, row => row.PanelLabel, label => new MeterControl(label, PanelInner, 12, "#C8C8C8", 10));
+        _islandLimits = new LimitMeterList(IslandMeters, row => row.IslandLabel, label => new MeterControl(label, 80));
     }
 
     // --- odświeżanie widoku -------------------------------------------------------------------
@@ -203,10 +200,13 @@ public partial class MainWindow : Window, ISettingsHost
         _sessions = _aggregator.GetSessions(nowMs, _agentsSnapshot, _orcaLabels);
         AnnounceChanges(nowMs);
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
-        // Bez czasu pomiaru (0 z pliku bez updatedAt) nie ma ani świeżości, ani prognozy tempa.
+        // Plik chwilowo zajęty (podmiana w trakcie) nie może na sekundę zmienić zestawu pasków.
+        var serverLimits = JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits)
+            ?? (File.Exists(_paths.ServerLimitsFile) ? _lastServerLimits : null);
+        _lastServerLimits = serverLimits;
         long? measuredAt = limits is { UpdatedAt: > 0 } ? limits.UpdatedAt : null;
-        var fiveView = LimitCalculator.GetView(limits?.FiveHour, LimitWindowKind.FiveHour, measuredAt, nowMs, panel: false);
-        var weekView = LimitCalculator.GetView(limits?.SevenDay, LimitWindowKind.SevenDay, measuredAt, nowMs, panel: false);
+        var limitRows = LimitRows.Build(limits, serverLimits, nowMs, panel: false);
+        var limitMode = _config.LimitMode;
         var focus = _sessions.Count > 0 ? _sessions[0] : null;
 
         var counts = new Dictionary<string, int> { ["czeka"] = 0, ["pracuje"] = 0, ["gotowe"] = 0 };
@@ -263,16 +263,16 @@ public partial class MainWindow : Window, ISettingsHost
             IslandDetail.Text = StatusDetail.Text;
         }
 
-        _m5h.Set(fiveView.Pct, fiveView.Note, fiveView.Color);
-        _mWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
-        _i5h.Set(fiveView.Pct, fiveView.Note, fiveView.Color);
-        _iWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
+        _cardLimits.Update(limitRows, limitMode);
+        // Wyspa ma miejsce na dwa wiersze: limity konta mają pierwszeństwo przed limitami modeli.
+        _islandLimits.Update(limitRows.Take(2), limitMode);
+        CardLimitMode.Text = LimitDisplay.Word(limitMode);
         var contextPct = focus?.ContextPct;
         _mContext.Set(contextPct, SessionFormatting.GetContextNote(focus), contextPct >= 80 ? "#FFB224" : "#BDBDBD");
-        Freshness.Text = Formatting.GetFreshnessText(measuredAt);
+        Freshness.Text = Formatting.GetFreshnessText(measuredAt, limits?.Source);
 
         // Obramowanie ostrzega przed końcem limitu także w widoku mini, bez najeżdżania.
-        var warn = fiveView.Warn == "#FF5A4E" || weekView.Warn == "#FF5A4E" ? "#FF5A4E" : fiveView.Warn ?? weekView.Warn;
+        var warn = LimitRows.Warning(limitRows);
         // Bez ostrzeżenia ramka zostaje wyraźna: przy zgaszonych światłach ciemna karta ginęła na ciemnej tapecie.
         var borderBrush = Brushes.Brush(warn is not null ? "#B3" + warn[1..] : IdleBorder);
         Card.BorderBrush = borderBrush;
@@ -284,16 +284,15 @@ public partial class MainWindow : Window, ISettingsHost
 
         if (Panel.IsOpen)
         {
-            var panelFive = LimitCalculator.GetView(limits?.FiveHour, LimitWindowKind.FiveHour, measuredAt, nowMs, panel: true);
-            var panelWeek = LimitCalculator.GetView(limits?.SevenDay, LimitWindowKind.SevenDay, measuredAt, nowMs, panel: true);
-            UpdatePanel(_sessions, panelFive, panelWeek, measuredAt, nowMs);
+            UpdatePanel(_sessions, LimitRows.Build(limits, serverLimits, nowMs, panel: true), measuredAt, limits?.Source, nowMs);
         }
     }
 
-    private void UpdatePanel(IReadOnlyList<SessionInfo> sessions, LimitView fiveView, LimitView weekView, long? measuredAt, long nowMs)
+    private void UpdatePanel(IReadOnlyList<SessionInfo> sessions, IReadOnlyList<LimitRow> limitRows, long? measuredAt, string? source, long nowMs)
     {
         PanelCount.Text = sessions.Count.ToString();
-        PanelFreshness.Text = Formatting.GetFreshnessText(measuredAt);
+        PanelFreshness.Text = Formatting.GetFreshnessText(measuredAt, source);
+        LimitModeText.Text = $"{LimitDisplay.Word(_config.LimitMode)} ⇅";
 
         // Wiersze buduje się od nowa tylko, gdy zmieni się to, co pokazują — inaczej podświetlenie
         // pod kursorem migałoby co sekundę.
@@ -312,8 +311,7 @@ public partial class MainWindow : Window, ISettingsHost
                 SessionList.Children.Add(SessionRowFactory.Create(session, nowMs, _rowStyle, _waitingRowStyle, OnSessionRowClicked));
             }
         }
-        _p5h.Set(fiveView.Pct, fiveView.Note, fiveView.Color);
-        _pWeek.Set(weekView.Pct, weekView.Note, weekView.Color);
+        _panelLimits.Update(limitRows, _config.LimitMode);
     }
 
     private async void OnSessionRowClicked(SessionInfo session)
@@ -1457,6 +1455,15 @@ public partial class MainWindow : Window, ISettingsHost
         MinimizeButton.Click += (_, _) => Safely("zmniejszanie", () => SwitchSize("mini"));
         ExpandButton.Click += (_, _) => Safely("rozwijanie", () => SwitchSize("full"));
         IslandSizeButton.Click += (_, _) => Safely("wyspa: rozmiar", () => SwitchSize(_size == "mini" ? "full" : "mini"));
+        LimitModeToggle.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Safely("limity: tryb", () =>
+            {
+                ChangeConfig(c => c with { LimitDisplay = LimitDisplay.Key(LimitDisplay.Toggle(c.LimitMode)) });
+                UpdateView();
+            });
+        };
         Panel.CustomPopupPlacementCallback = PlacePanel;
         // Popup nie przelicza położenia, gdy sam rośnie (lista sesji wypełnia się po otwarciu — nad wyspą
         // przy dolnej krawędzi nachodziłby na nią) ani gdy okno się przesuwa (wyspa rozwijana przy boku
