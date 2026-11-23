@@ -173,6 +173,25 @@ public sealed class ContextWindowsTests
     }
 
     [Fact]
+    public void Current_models_have_their_documented_window_without_any_statusline()
+    {
+        // IT-1194: Orca pokazywała 125,4 tys. / 1 mln, widżet ≈62% (zgadnięte 200 tys.).
+        Assert.Equal((1_000_000d, false), ContextWindows.Resolve("claude-opus-5-5", 125_400, null));
+        Assert.Equal((1_000_000d, false), ContextWindows.Resolve("claude-fable-5-2", 50_000, null));
+        Assert.Equal((1_000_000d, false), ContextWindows.Resolve("claude-sonnet-5-5", 50_000, null));
+        Assert.Equal((1_000_000d, false), ContextWindows.Resolve("claude-haiku-5-5", 50_000, null));
+        Assert.Equal((1_000_000d, false), ContextWindows.Resolve("claude-opus-4-6", 50_000, null));
+        Assert.Equal((200_000d, false), ContextWindows.Resolve("claude-haiku-4-5", 50_000, null));
+        Assert.Equal((200_000d, true), ContextWindows.Resolve("claude-opus-4-5", 50_000, null));
+    }
+
+    [Fact]
+    public void Window_seen_in_statusline_overrides_the_documented_default()
+    {
+        Assert.Equal((200_000d, false), ContextWindows.Resolve("claude-opus-5-5", 125_400, Map("claude-opus-5-5", 200_000)));
+    }
+
+    [Fact]
     public void Conversation_larger_than_the_known_window_bumps_it()
     {
         Assert.Equal((1_000_000d, true), ContextWindows.Resolve("claude-sonnet-5-5", 300_000, Map("claude-sonnet-5-5", 200_000)));
@@ -250,9 +269,9 @@ public sealed class SessionContextFromTranscriptTests
 
         Assert.Equal(215_100, session.ContextTokens);
         Assert.Equal(1_000_000, session.ContextSize);
-        Assert.True(session.ContextEstimated);
+        Assert.False(session.ContextEstimated);
         Assert.Equal(21.51, session.ContextPct!.Value, 2);
-        Assert.Equal("215 tys. / ok. 1 mln", SessionFormatting.GetContextNote(session));
+        Assert.Equal("215 tys. / 1 mln", SessionFormatting.GetContextNote(session));
     }
 
     [Fact]
@@ -306,7 +325,7 @@ public sealed class SessionContextFromTranscriptTests
 
         var session = new SessionAggregator(paths, new FakeProcessProbe().Alive(111)).GetSessions(nowMs: 100_000).Single();
         Assert.Equal(150_000, session.ContextTokens);
-        Assert.Equal(75, session.ContextPct);
+        Assert.Equal(15, session.ContextPct);
 
         // Streszczenie po wznowieniu — dawny odczyt statusline też już nie obowiązuje.
         File.AppendAllLines(transcript, [TranscriptContextTests.Compact(at: 200_000)]);
@@ -348,6 +367,6 @@ public sealed class SessionContextFromTranscriptTests
         var session = new SessionAggregator(paths, new FakeProcessProbe()) { ClaudeConfigDir = config }.GetSessions(2000, agents).Single();
 
         Assert.True(session.IsBackground);
-        Assert.Equal(20, session.ContextPct);
+        Assert.Equal(4, session.ContextPct);
     }
 }

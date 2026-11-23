@@ -22,6 +22,32 @@ public static class ContextWindows
     public const double Standard = 200_000;
     public const double Large = 1_000_000;
 
+    /// <summary>
+    /// Domyślne okna modeli wg dokumentacji Claude (prefiks id → okno). Modele od Opus/Sonnet 4.6
+    /// mają domyślnie 1 mln bez żadnego dopisku — bez tej tabeli sesja Opus 5.5 ze 125 tys. tokenów
+    /// wyglądała na 62% zajętą (okno 200 tys.), choć Claude Code liczy ją od 1 mln.
+    /// Okno podpatrzone ze statusline ma pierwszeństwo.
+    /// </summary>
+    private static readonly (string Prefix, double Size)[] Defaults =
+    [
+        ("claude-fable-5", Large),
+        ("claude-mythos-5", Large),
+        ("claude-opus-5", Large),
+        ("claude-opus-4-8", Large),
+        ("claude-opus-4-7", Large),
+        ("claude-opus-4-6", Large),
+        ("claude-sonnet-5", Large),
+        ("claude-sonnet-4-6", Large),
+        ("claude-haiku-5", Large),
+        ("claude-haiku-4-5", Standard),
+    ];
+
+    /// <summary>Domyślne okno modelu z tabeli albo null dla modelu spoza niej.</summary>
+    public static double? Default(string? model) =>
+        Key(model) is { } key && Defaults.FirstOrDefault(entry => key.StartsWith(entry.Prefix, StringComparison.Ordinal)) is { Prefix: not null } match
+            ? match.Size
+            : null;
+
     /// <summary>Tyle różnych okien jednego modelu pamiętamy.</summary>
     private const int MaxVariants = 4;
 
@@ -35,15 +61,17 @@ public static class ContextWindows
     }
 
     /// <summary>
-    /// Rozmiar okna i czy jest pewny. Pewny tylko wtedy, gdy statusline podała dla tego modelu jedno
-    /// okno i rozmowa się w nim mieści. Przy kilku oknach (warianty modelu) bierzemy najmniejsze,
-    /// które mieści rozmowę — to szacunek. Bez wiedzy o modelu: 200 tys., a dla większej rozmowy 1 mln.
+    /// Rozmiar okna i czy jest pewny. Pewny, gdy statusline podała dla tego modelu jedno okno albo
+    /// model jest w tabeli domyślnych — i rozmowa się w nim mieści. Przy kilku podpatrzonych oknach
+    /// (warianty modelu) bierzemy najmniejsze, które mieści rozmowę — to szacunek. Model nieznany:
+    /// 200 tys., a dla większej rozmowy 1 mln — też szacunek.
     /// </summary>
     public static (double Size, bool Estimated) Resolve(string? model, double tokens, ContextWindowMap? known)
     {
         var sizes = Key(model) is { } key && known?.Models.TryGetValue(key, out var list) == true
             ? list.Where(size => size > 0 && double.IsFinite(size)).Distinct().Order().ToList()
             : [];
+        if (sizes.Count == 0 && Default(model) is double builtIn) sizes = [builtIn];
         if (sizes.Count == 0) return (tokens <= Standard ? Standard : Large, true);
         if (sizes.Count == 1 && tokens <= sizes[0]) return (sizes[0], false);
         var fitting = sizes.FirstOrDefault(size => size >= tokens);
