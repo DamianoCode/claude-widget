@@ -200,17 +200,32 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
     }
 
     /// <summary>
-    /// Kontekst sesji: ze statusline, gdy go podała (dokładny), a inaczej z transkryptu — tak widać
-    /// go też w sesjach z Orki, IDE i w tle, gdzie statusline się nie uruchamia.
+    /// Statusline odświeża się zaraz po każdej odpowiedzi; odpowiedź w transkrypcie późniejsza od jej
+    /// odczytu o więcej niż tyle znaczy, że statusline tej sesji już nie działa (np. wznowiona w Orce).
+    /// </summary>
+    private const long StatusLineGraceMs = 30_000;
+
+    /// <summary>
+    /// Kontekst sesji: ze statusline, gdy go podała i nie ucichła (dokładny), a inaczej z transkryptu —
+    /// tak widać go też w sesjach z Orki, IDE i w tle, gdzie statusline się nie uruchamia.
     /// </summary>
     private SessionContext ContextOf(SessionUsage? usage, string? transcriptPath)
     {
-        if (usage?.ContextPct is double pct) return new SessionContext(pct, usage.ContextTokens, usage.ContextSize, false);
-        if (string.IsNullOrEmpty(transcriptPath)) return SessionContext.None;
-        _contextTranscripts.Add(transcriptPath);
-        if (_context.Read(transcriptPath) is not { } read) return SessionContext.None;
-        var (size, estimated) = ContextWindows.Resolve(read.Model, read.Tokens, _windows);
-        return new SessionContext(Math.Min(100, read.Tokens * 100 / size), read.Tokens, size, estimated);
+        TranscriptReading? read = null;
+        if (!string.IsNullOrEmpty(transcriptPath))
+        {
+            _contextTranscripts.Add(transcriptPath);
+            read = _context.Read(transcriptPath);
+        }
+        var transcriptNewer = read?.At is long at && usage is not null && at > usage.UpdatedAt + StatusLineGraceMs;
+        if (usage?.ContextPct is double pct && !transcriptNewer)
+        {
+            return new SessionContext(pct, usage.ContextTokens, usage.ContextSize, false);
+        }
+        // Rozmowę streszczono po ostatniej odpowiedzi — nowego rozmiaru jeszcze nie znamy.
+        if (read?.Tokens is not double tokens) return SessionContext.None;
+        var (size, estimated) = ContextWindows.Resolve(read.Model, tokens, _windows);
+        return new SessionContext(Math.Min(100, tokens * 100 / size), tokens, size, estimated);
     }
 
     /// <summary>Lista agentów udana i świeża — bez niej sesji w tle po prostu nie widać.</summary>

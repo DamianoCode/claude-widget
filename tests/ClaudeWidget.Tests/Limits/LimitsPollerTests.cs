@@ -70,6 +70,19 @@ public sealed class LimitsPollerTests : IDisposable
     }
 
     [Fact]
+    public async Task Failing_server_file_does_not_block_account_limits()
+    {
+        // Katalog w miejscu pliku — zapis pełnego odczytu zawsze się nie uda.
+        Directory.CreateDirectory(_paths.ServerLimitsFile);
+        _http.Respond(HttpStatusCode.OK, UsageBody);
+
+        await Poller().PollOnceAsync(CancellationToken.None);
+
+        Assert.Equal(40, Saved()!.FiveHour!.Pct);
+        Assert.Contains(_log, line => line.Contains("limits-server.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Fresh_statusline_with_stale_server_reading_still_asks_the_server()
     {
         var statusline = new AccountLimits { SevenDay = new LimitWindow { Pct = 3 }, UpdatedAt = NowMs - 60_000 };

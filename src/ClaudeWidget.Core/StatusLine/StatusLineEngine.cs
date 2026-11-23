@@ -15,6 +15,7 @@ public static class StatusLineEngine
     {
         var sessionId = GetString(data, "session_id");
         var path = paths.SessionFile(sessionId, SessionFileKind.Usage);
+        double? contextSize = null;
         if (path is not null)
         {
             var context = GetProperty(data, "context_window");
@@ -29,13 +30,7 @@ public static class StatusLineEngine
                 UpdatedAt = nowMs,
             };
             JsonStore.Write(path, usage, StateJson.Default.SessionUsage);
-
-            // Rozmiar okna zna tylko statusline — zapamiętany dla modelu przyda się sesjom bez niej.
-            var learned = Sessions.ContextWindows.With(
-                JsonStore.Read(paths.ContextWindowsFile, Sessions.ContextWindowJson.Default.ContextWindowMap),
-                GetString(GetProperty(data, "model"), "id"),
-                usage.ContextSize);
-            if (learned is not null) JsonStore.Write(paths.ContextWindowsFile, learned, Sessions.ContextWindowJson.Default.ContextWindowMap);
+            contextSize = usage.ContextSize;
         }
 
         // Limity są wspólne dla całego konta, więc wystarczy ostatni odczyt z dowolnej sesji.
@@ -53,6 +48,10 @@ public static class StatusLineEngine
                 Source = LimitSources.StatusLine,
             }, StateJson.Default.AccountLimits);
         }
+
+        // Rozmiar okna zna tylko statusline — zapamiętany dla modelu przyda się sesjom bez niej.
+        // Na końcu i bez wyjątków: podpowiedź dla innych sesji nie może zatrzymać zapisu limitów.
+        Sessions.ContextWindows.Learn(paths, GetString(GetProperty(data, "model"), "id"), contextSize);
     }
 
     /// <summary>Buduje linię statusu wypisywaną do terminala Claude Code.</summary>

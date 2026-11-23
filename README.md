@@ -210,8 +210,10 @@ Gdy Orca nie odpowiada, zostaje samo wyciągnięte okno, a przyczyna trafia do `
   rozmiar okna kontekstu każdego modelu (`context-windows.json`).
 - Sesje bez statusline (Orca, Agent SDK, IDE, sesje w tle) mają kontekst z końcówki transkryptu
   (`~\.claude\projects\…\<sesja>.jsonl`): wejście ostatniej odpowiedzi. Okno kontekstu bierze się
-  z `context-windows.json`; model, którego żadna statusline jeszcze nie podała, ma okno szacowane
-  (200 tys., a gdy rozmowa jest większa — 1 mln) i procent z „≈”.
+  z `context-windows.json`; model, którego żadna statusline jeszcze nie podała albo który widziano
+  z różnymi oknami (np. wariant `[1m]`), ma okno szacowane (najmniejsze pasujące; bez wiedzy 200 tys.,
+  a gdy rozmowa jest większa — 1 mln) i procent z „≈”. Gdy statusline sesji ucichła (sesja zaczęta
+  w CLI, wznowiona w Orce), a transkrypt ma nowszą odpowiedź, kontekst też bierze się z transkryptu.
 - Gdy żadna statusline nie odświeżyła limitów od 5 minut (np. agenci w Orce, IDE, `claude -p`),
   widżet pobiera je sam z `api.anthropic.com/api/oauth/usage` (tego samego endpointu używa panel
   limitów w Orce) i zapisuje do tego samego `limits.json`. Pełny odczyt serwera — czy plan ma okno

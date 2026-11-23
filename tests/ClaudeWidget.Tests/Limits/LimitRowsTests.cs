@@ -53,12 +53,21 @@ public sealed class ServerLimitsParseTests
     }
 
     [Fact]
-    public void Unscoped_non_weekly_entry_also_counts_as_five_hour_window()
+    public void Unscoped_session_entry_also_counts_as_five_hour_window()
     {
         var server = OAuthUsage.ParseServer(Json("""
             { "five_hour": null, "limits": [ { "group": "session", "percent": 12, "scope": null } ] }
             """), Now)!;
         Assert.True(server.HasFiveHour);
+    }
+
+    [Fact]
+    public void Unknown_unscoped_group_says_nothing_about_five_hour_window()
+    {
+        var server = OAuthUsage.ParseServer(Json("""
+            { "five_hour": null, "limits": [ { "group": "monthly", "kind": "monthly_all", "percent": 12, "scope": null } ] }
+            """), Now)!;
+        Assert.False(server.HasFiveHour);
     }
 
     [Fact]

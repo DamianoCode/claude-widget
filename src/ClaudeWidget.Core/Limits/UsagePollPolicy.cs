@@ -71,7 +71,8 @@ public static class UsagePollPolicy
     /// <summary>Opóźnienie do następnej próby.</summary>
     /// <param name="limits">Aktualny stan <c>limits.json</c> (po ewentualnym zapisie).</param>
     /// <param name="failures">Kolejne nieudane próby, licząc tę (dla <see cref="UsagePollOutcome.Failed"/>).</param>
-    public static TimeSpan NextDelay(UsagePollOutcome outcome, AccountLimits? limits, long nowMs, int failures = 0, TimeSpan? retryAfter = null)
+    /// <param name="server">Pełny odczyt serwera — jego wiek i resety limitów modeli też wyznaczają termin.</param>
+    public static TimeSpan NextDelay(UsagePollOutcome outcome, AccountLimits? limits, long nowMs, int failures = 0, TimeSpan? retryAfter = null, ServerLimits? server = null)
     {
         switch (outcome)
         {
@@ -84,19 +85,36 @@ public static class UsagePollPolicy
                 return Clamp(backoff, TimeSpan.FromMinutes(1), MaxBackoff);
         }
 
-        // Ok i Fresh: do momentu, gdy odczyt się zestarzeje, albo tuż po najbliższym resecie.
+        // Ok i Fresh: do najbliższego z terminów — zestarzeje się limits.json, zestarzeje się pełny
+        // odczyt serwera albo minie reset któregoś limitu (konta lub modelu).
         var delay = Interval;
         if (limits is { UpdatedAt: > 0 })
         {
             delay = TimeSpan.FromMilliseconds(Math.Max(0, limits.UpdatedAt + Interval.TotalMilliseconds - nowMs));
-            if (EarliestResetMs(limits) is long reset && reset > nowMs)
-            {
-                var untilReset = TimeSpan.FromMilliseconds(reset - nowMs) + AfterReset;
-                if (untilReset < delay) delay = untilReset;
-            }
+        }
+        if (server is { FetchedAt: > 0 })
+        {
+            var serverDue = TimeSpan.FromMilliseconds(Math.Max(0, server.FetchedAt + ServerInterval.TotalMilliseconds - nowMs));
+            if (serverDue < delay) delay = serverDue;
+        }
+        var resets = (limits is null ? [] : ResetsMs(limits)).Concat(ScopedResetsMs(server));
+        if (resets.Where(reset => reset > nowMs).DefaultIfEmpty(long.MaxValue).Min() is var next && next != long.MaxValue)
+        {
+            var untilReset = TimeSpan.FromMilliseconds(next - nowMs) + AfterReset;
+            if (untilReset < delay) delay = untilReset;
         }
         return Clamp(delay, MinDelay, Interval);
     }
+
+    private static IEnumerable<long> ResetsMs(AccountLimits limits) =>
+        new[] { limits.FiveHour, limits.SevenDay }
+            .Where(window => window?.ResetsAt is double seconds && double.IsFinite(seconds))
+            .Select(window => (long)(window!.ResetsAt!.Value * 1000));
+
+    private static IEnumerable<long> ScopedResetsMs(ServerLimits? server) =>
+        (server?.Scoped ?? [])
+            .Where(limit => limit.ResetsAt is double seconds && double.IsFinite(seconds))
+            .Select(limit => (long)(limit.ResetsAt!.Value * 1000));
 
     private static long? EarliestResetMs(AccountLimits limits)
     {

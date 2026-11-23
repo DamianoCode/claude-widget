@@ -103,14 +103,19 @@ public static class OAuthUsage
             {
                 if (entry.ValueKind != JsonValueKind.Object) continue;
                 var group = Text(entry, "group");
+                var kind = Text(entry, "kind") ?? "";
                 var model = entry.TryGetProperty("scope", out var scope) && scope.ValueKind == JsonValueKind.Object
                     && scope.TryGetProperty("model", out var modelScope) && modelScope.ValueKind == JsonValueKind.Object
                         ? Text(modelScope, "display_name")
                         : null;
                 if (model is null)
                 {
-                    // Ogólny limit spoza tygodnia (okno sesji) — dowód, że plan ma okno 5 h.
-                    if (group is not null && group != "weekly") hasFiveHour = true;
+                    // Ogólny limit okna sesji — dowód, że plan ma okno 5 h. Nieznane grupy nic nie przesądzają.
+                    if (group is "session" or "five_hour" || kind.StartsWith("session", StringComparison.Ordinal)
+                        || kind.StartsWith("five_hour", StringComparison.Ordinal))
+                    {
+                        hasFiveHour = true;
+                    }
                     continue;
                 }
                 if (scoped.Any(limit => limit.Label == model && limit.Group == group)) continue;

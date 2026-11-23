@@ -53,6 +53,23 @@ public sealed class UsagePollPolicyTests
     }
 
     [Fact]
+    public void Server_reading_deadline_and_model_resets_bring_the_next_poll_forward()
+    {
+        // Statusline odświeża limits.json, więc jego termin ciągle się odsuwa — decyduje wiek odczytu serwera.
+        var server = new ServerLimits { FetchedAt = Now - 14 * Minute };
+        Assert.Equal(TimeSpan.FromMinutes(1), UsagePollPolicy.NextDelay(UsagePollOutcome.Fresh, Limits(Now - 1 * Minute), Now, server: server));
+
+        // Reset limitu modelu za 2 minuty — pytamy tuż po nim.
+        var scoped = new ServerLimits
+        {
+            FetchedAt = Now - 1 * Minute,
+            Scoped = [new ScopedLimit { Label = "Fable", Group = "weekly", Pct = 90, ResetsAt = (Now + 2 * Minute) / 1000.0 }],
+        };
+        Assert.Equal(TimeSpan.FromMinutes(2) + UsagePollPolicy.AfterReset,
+            UsagePollPolicy.NextDelay(UsagePollOutcome.Fresh, Limits(Now), Now, server: scoped));
+    }
+
+    [Fact]
     public void After_success_waits_until_reading_ages()
     {
         Assert.Equal(UsagePollPolicy.Interval, UsagePollPolicy.NextDelay(UsagePollOutcome.Ok, Limits(Now), Now));

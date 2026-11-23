@@ -298,7 +298,7 @@ public partial class MainWindow : Window, ISettingsHost
         // Wiersze buduje się od nowa tylko, gdy zmieni się to, co pokazują — inaczej podświetlenie
         // pod kursorem migałoby co sekundę.
         var signature = string.Join('\n', sessions.Select(s =>
-            $"{s.Id}|{s.Kind}|{SessionFormatting.GetSessionMeta(s, nowMs)}|{s.Name}|{s.ContextPct:0}|{s.ContextEstimated}|{s.Summary}"));
+            $"{s.Id}|{s.Kind}|{SessionFormatting.GetSessionMeta(s, nowMs)}|{s.Name}|{s.ContextPct:0}|{s.ContextPct >= 80}|{s.ContextEstimated}|{SessionFormatting.GetContextNote(s)}|{s.Summary}"));
         if (signature != _panelSignature)
         {
             _panelSignature = signature;

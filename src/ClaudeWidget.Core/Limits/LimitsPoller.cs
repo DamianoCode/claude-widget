@@ -97,7 +97,8 @@ public sealed class LimitsPoller : IDisposable
         var (outcome, retryAfter) = await TryPollAsync(cancellation).ConfigureAwait(false);
         _failures = outcome == UsagePollOutcome.Failed ? _failures + 1 : 0;
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
-        return UsagePollPolicy.NextDelay(outcome, limits, NowMs(), _failures, retryAfter);
+        var server = JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits);
+        return UsagePollPolicy.NextDelay(outcome, limits, NowMs(), _failures, retryAfter, server);
     }
 
     private async Task<(UsagePollOutcome Outcome, TimeSpan? RetryAfter)> TryPollAsync(CancellationToken cancellation)
@@ -142,7 +143,9 @@ public sealed class LimitsPoller : IDisposable
         switch (result.Status)
         {
             case UsageFetchStatus.Ok:
-                if (!SaveServer(result.Server) || !Save(result.Limits!, startedAt)) return (UsagePollOutcome.Failed, null);
+                // Osobno: nieudany zapis pełnego odczytu (zgłoszony w logu) nie blokuje limitów 5 h i tygodnia.
+                SaveServer(result.Server);
+                if (!Save(result.Limits!, startedAt)) return (UsagePollOutcome.Failed, null);
                 Report("działa");
                 return (UsagePollOutcome.Ok, null);
             case UsageFetchStatus.Rejected:
