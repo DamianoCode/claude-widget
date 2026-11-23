@@ -104,6 +104,49 @@ public sealed record AccountLimits
     public LimitWindow? SevenDay { get; init; }
 
     public long UpdatedAt { get; init; }
+
+    /// <summary>
+    /// Kto zapisał odczyt: <see cref="LimitSources.StatusLine"/> albo <see cref="LimitSources.Server"/>.
+    /// Brak — nieznane (np. statusline ze starszej wersji widżetu).
+    /// </summary>
+    public string? Source { get; init; }
+}
+
+/// <summary>
+/// <c>limits-server.json</c> — pisze go wyłącznie widżet: to, czego statusline nie zna. Które
+/// limity w ogóle obowiązują na tym planie (np. Max 20x nie ma okna 5 h) i limity jednego modelu
+/// (np. tygodniowy limit Fable). Osobny plik, bo statusline nadpisuje <c>limits.json</c> w całości.
+/// </summary>
+public sealed record ServerLimits
+{
+    /// <summary>Plan ma okno 5 h (serwer podał je w odczycie).</summary>
+    public bool HasFiveHour { get; init; }
+
+    /// <summary>Limity jednego modelu — osobne paski obok ogólnych.</summary>
+    public List<ScopedLimit>? Scoped { get; init; }
+
+    public long FetchedAt { get; init; }
+}
+
+/// <summary>Limit jednego modelu: nazwa, zużycie 0–100 i reset w sekundach od epoki.</summary>
+public sealed record ScopedLimit
+{
+    /// <summary>Nazwa modelu, jak podaje serwer (np. „Fable”).</summary>
+    public string Label { get; init; } = "";
+
+    /// <summary>Okno limitu wg serwera: <c>weekly</c>, <c>session</c> albo inne (bez prognozy tempa).</summary>
+    public string? Group { get; init; }
+
+    public double? Pct { get; init; }
+
+    public double? ResetsAt { get; init; }
+}
+
+/// <summary>Źródła odczytu limitów w <c>limits.json</c>.</summary>
+public static class LimitSources
+{
+    public const string StatusLine = "statusline";
+    public const string Server = "server";
 }
 
 /// <summary><c>&lt;sesja&gt;.seen.json</c> — pisze go wyłącznie widżet, gdy przejrzałeś wynik.</summary>
@@ -118,5 +161,6 @@ public sealed record SeenMarker
 [JsonSerializable(typeof(SessionState))]
 [JsonSerializable(typeof(SessionUsage))]
 [JsonSerializable(typeof(AccountLimits))]
+[JsonSerializable(typeof(ServerLimits))]
 [JsonSerializable(typeof(SeenMarker))]
 public sealed partial class StateJson : JsonSerializerContext;

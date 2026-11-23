@@ -32,6 +32,12 @@ public sealed record SessionInfo
 
     public double? ContextSize { get; init; }
 
+    /// <summary>
+    /// Kontekst z transkryptu przy nieznanym oknie modelu — procent jest szacunkiem (okno 200 tys.
+    /// albo 1 mln). Ze statusline albo z podpatrzonym oknem: false.
+    /// </summary>
+    public bool ContextEstimated { get; init; }
+
     /// <summary>Sesja w tle (`/bg`, `claude --bg`) — nie ma okna, otwiera się przez `claude attach`.</summary>
     public bool IsBackground { get; init; }
 

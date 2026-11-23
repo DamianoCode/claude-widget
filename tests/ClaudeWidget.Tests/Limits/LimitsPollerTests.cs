@@ -53,10 +53,58 @@ public sealed class LimitsPollerTests : IDisposable
     }
 
     [Fact]
+    public async Task Saves_the_full_server_reading_next_to_the_statusline_shape()
+    {
+        _http.Respond(HttpStatusCode.OK, """
+            { "five_hour": null, "seven_day": { "utilization": 35 },
+              "limits": [ { "group": "weekly", "percent": 7, "scope": { "model": { "display_name": "Fable" } } } ] }
+            """);
+
+        await Poller().PollOnceAsync(CancellationToken.None);
+
+        var server = JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits)!;
+        Assert.False(server.HasFiveHour);
+        Assert.Equal(NowMs, server.FetchedAt);
+        Assert.Equal(7, Assert.Single(server.Scoped!).Pct);
+        Assert.Equal(35, Saved()!.SevenDay!.Pct);
+    }
+
+    [Fact]
+    public async Task Failing_server_file_does_not_block_account_limits()
+    {
+        // Katalog w miejscu pliku — zapis pełnego odczytu zawsze się nie uda.
+        Directory.CreateDirectory(_paths.ServerLimitsFile);
+        _http.Respond(HttpStatusCode.OK, UsageBody);
+
+        await Poller().PollOnceAsync(CancellationToken.None);
+
+        Assert.Equal(40, Saved()!.FiveHour!.Pct);
+        Assert.Contains(_log, line => line.Contains("limits-server.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Fresh_statusline_with_stale_server_reading_still_asks_the_server()
+    {
+        var statusline = new AccountLimits { SevenDay = new LimitWindow { Pct = 3 }, UpdatedAt = NowMs - 60_000 };
+        JsonStore.Write(_paths.LimitsFile, statusline, StateJson.Default.AccountLimits);
+        JsonStore.Write(_paths.ServerLimitsFile, new ServerLimits { FetchedAt = NowMs - (long)UsagePollPolicy.ServerInterval.TotalMilliseconds },
+            StateJson.Default.ServerLimits);
+        _http.Respond(HttpStatusCode.OK, UsageBody);
+
+        await Poller().PollOnceAsync(CancellationToken.None);
+
+        Assert.Single(_http.Requests);
+        // Odczyt serwera jest nowszy niż ten ze statusline, więc trafia też do limits.json.
+        Assert.Equal(NowMs, Saved()!.UpdatedAt);
+        Assert.Equal(NowMs, JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits)!.FetchedAt);
+    }
+
+    [Fact]
     public async Task Fresh_statusline_reading_means_no_request()
     {
         var statusline = new AccountLimits { SevenDay = new LimitWindow { Pct = 3 }, UpdatedAt = NowMs - 60_000 };
         JsonStore.Write(_paths.LimitsFile, statusline, StateJson.Default.AccountLimits);
+        JsonStore.Write(_paths.ServerLimitsFile, new ServerLimits { FetchedAt = NowMs - 5 * 60_000 }, StateJson.Default.ServerLimits);
 
         var delay = await Poller().PollOnceAsync(CancellationToken.None);
 

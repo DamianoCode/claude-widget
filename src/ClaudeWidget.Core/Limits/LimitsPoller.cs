@@ -1,9 +1,10 @@
 namespace ClaudeWidget.Core.Limits;
 
 /// <summary>
-/// Pobiera limity konta z serwera, gdy statusline ich nie dostarcza — np. pracujesz tylko w Orce,
-/// rozszerzeniu IDE albo w trybie <c>-p</c>. Wynik trafia do tego samego <c>limits.json</c>, więc
-/// reszta widżetu nie wie, skąd przyszedł. Nie wymaga konfiguracji: używa logowania Claude Code.
+/// Pobiera limity konta z serwera: co 5 minut, gdy statusline ich nie dostarcza — np. pracujesz tylko w Orce,
+/// rozszerzeniu IDE albo w trybie <c>-p</c>, a przy działającej statusline rzadziej, po to, czego ona nie
+/// zna. 5 h i tydzień trafiają do tego samego <c>limits.json</c>, a pełny odczyt (plan, limity modeli)
+/// do <c>limits-server.json</c>. Nie wymaga konfiguracji: używa logowania Claude Code.
 ///
 /// Token nigdy nie trafia do logu, a odrzucony nie jest wysyłany ponownie — nowy pojawi się, gdy
 /// Claude Code sam go odświeży.
@@ -96,13 +97,17 @@ public sealed class LimitsPoller : IDisposable
         var (outcome, retryAfter) = await TryPollAsync(cancellation).ConfigureAwait(false);
         _failures = outcome == UsagePollOutcome.Failed ? _failures + 1 : 0;
         var limits = JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits);
-        return UsagePollPolicy.NextDelay(outcome, limits, NowMs(), _failures, retryAfter);
+        var server = JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits);
+        return UsagePollPolicy.NextDelay(outcome, limits, NowMs(), _failures, retryAfter, server);
     }
 
     private async Task<(UsagePollOutcome Outcome, TimeSpan? RetryAfter)> TryPollAsync(CancellationToken cancellation)
     {
         var startedAt = NowMs();
-        if (UsagePollPolicy.IsFresh(JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits), startedAt))
+        if (UsagePollPolicy.IsFresh(
+                JsonStore.Read(_paths.LimitsFile, StateJson.Default.AccountLimits),
+                JsonStore.Read(_paths.ServerLimitsFile, StateJson.Default.ServerLimits),
+                startedAt))
         {
             return (UsagePollOutcome.Fresh, null);
         }
@@ -138,6 +143,8 @@ public sealed class LimitsPoller : IDisposable
         switch (result.Status)
         {
             case UsageFetchStatus.Ok:
+                // Osobno: nieudany zapis pełnego odczytu (zgłoszony w logu) nie blokuje limitów 5 h i tygodnia.
+                SaveServer(result.Server);
                 if (!Save(result.Limits!, startedAt)) return (UsagePollOutcome.Failed, null);
                 Report("działa");
                 return (UsagePollOutcome.Ok, null);
@@ -151,6 +158,22 @@ public sealed class LimitsPoller : IDisposable
             default:
                 Report(result.Detail!);
                 return (UsagePollOutcome.Failed, null);
+        }
+    }
+
+    /// <summary>Pełny odczyt serwera; ten plik pisze tylko widżet, więc zawsze nadpisuje. False, gdy zapis się nie udał.</summary>
+    private bool SaveServer(ServerLimits? server)
+    {
+        if (server is null) return true;
+        try
+        {
+            JsonStore.Write(_paths.ServerLimitsFile, server, StateJson.Default.ServerLimits);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Report($"nie udało się zapisać limits-server.json ({error.GetType().Name})");
+            return false;
         }
     }
 

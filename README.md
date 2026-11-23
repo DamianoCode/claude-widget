@@ -10,8 +10,10 @@ w kilku sesjach naraz (np. na różnych worktree) i łatwo zapomnieć, że któr
 - 🟢 **zielone** — któraś sesja ma nowy wynik, którego jeszcze nie widziałeś
 
 Każde światło ma licznik sesji w danym stanie. Sesja bezczynna, której wynik już widziałeś,
-niczego nie zapala. Obok: limit 5 h i tygodniowy (z prognozą, czy wystarczy do resetu) oraz
-zajętość kontekstu każdej sesji.
+niczego nie zapala. Obok: limity konta, które obowiązują na Twoim planie — 5 h (plany bez tego
+okna, np. Max 20x, go nie widzą), tygodniowy i limity pojedynczych modeli, np. Fable — z prognozą,
+czy wystarczą do resetu, oraz zajętość kontekstu każdej sesji — także tych z Orki, IDE i w tle,
+w których statusline się nie uruchamia.
 
 ## Instalacja
 
@@ -51,8 +53,8 @@ oddaje je sam, więc Twoja statusline działa i bez widżetu. Odinstalowanie prz
 w oryginale; widżet sprawdza to też przy każdym starcie (np. gdy odinstalujesz Git Bash).
 
 W pozostałych przypadkach (złożona komenda, brak Git Bash — wtedy Claude Code uruchamia statusline
-przez PowerShell) widżet pokazuje limity (pobiera je sam), ale bez procentu kontekstu sesji,
-a panel pokazuje podpowiedź. Wystarczy
+przez PowerShell) widżet pokazuje limity (pobiera je sam), a kontekst sesji liczy z jej transkryptu — procent bywa
+wtedy przybliżony („≈”), a panel pokazuje podpowiedź. Wystarczy
 jedna linia na początku Twojego skryptu, która przekaże mu wejście (wyjście przekaźnika się
 wyrzuca, więc wygląd zostaje):
 
@@ -144,7 +146,10 @@ do jutra — potem wracają same.
   cyfra albo F1–F24); „Wyłącz” go wyłącza, a gdy skrót zajmuje inny program, okno o tym mówi.
   Na polskiej klawiaturze Ctrl+Alt z A, C, E, L, N, O, S, X, Z to polskie litery (AltGr) — takich lepiej nie używać,
 - **krycie** karty widżetu (pod kursorem zawsze pełne),
-- **chowanie przy pełnym ekranie**.
+- **chowanie przy pełnym ekranie**,
+- **limity konta** — czy paski pokazują, ile limitu zużyto (domyślnie), czy ile zostało do resetu.
+  Tryb widać w nagłówku „Limity” nad paskami; w panelu ten znacznik („zużyte ⇅ / zostało ⇅”)
+  też go przełącza. Pod paskami widać, skąd jest odczyt: ze statusline sesji czy z serwera.
 
 Wszystko ląduje w `~\.claude\widget\widget-config.json` („Otwórz plik ustawień”). Plik można
 też poprawić ręcznie — widżet wczytuje zmiany na bieżąco:
@@ -157,12 +162,13 @@ też poprawić ręcznie — widżet wczytuje zmiany na bieżąco:
   "soundRepeatSeconds": 30,
   "hotkey": "Ctrl+Alt+K",
   "opacity": 80,
-  "hideOnFullscreen": true
+  "hideOnFullscreen": true,
+  "limitDisplay": "left"
 }
 ```
 
 `soundWaiting` / `soundDone` przyjmują `builtin`, `none` albo ścieżkę do pliku; `hotkey` pusty
-(`""`) wyłącza skrót. Bez wybranego dźwięku nadal działa dawny sposób: pliki `need.wav` (czeka)
+(`""`) wyłącza skrót; `limitDisplay` to `used` (zużyte) albo `left` (zostało). Bez wybranego dźwięku nadal działa dawny sposób: pliki `need.wav` (czeka)
 i `done.wav` (nowy wynik) w `~\.claude\widget\sounds` zastępują wbudowane. Wybrany plik, którego
 już nie ma, ustępuje wbudowanemu.
 
@@ -200,16 +206,25 @@ Gdy Orca nie odpowiada, zostaje samo wyciągnięte okno, a przyczyna trafia do `
   `~\.claude\widget\state\<sesja>.state.json`. To mały program skompilowany z góry (Native AOT),
   więc startuje w kilkadziesiąt milisekund i nie potrzebuje Node ani runtime .NET.
 - `ClaudeWidgetHook.exe statusline` to jednocześnie linia statusu w terminalu i źródło danych
-  o kontekście sesji oraz limitach konta (`<sesja>.usage.json`, `limits.json`).
+  o kontekście sesji oraz limitach konta (`<sesja>.usage.json`, `limits.json`). Zapamiętuje też
+  rozmiar okna kontekstu każdego modelu (`context-windows.json`).
+- Sesje bez statusline (Orca, Agent SDK, IDE, sesje w tle) mają kontekst z końcówki transkryptu
+  (`~\.claude\projects\…\<sesja>.jsonl`): wejście ostatniej odpowiedzi. Okno kontekstu bierze się
+  z `context-windows.json`; model, którego żadna statusline jeszcze nie podała albo który widziano
+  z różnymi oknami (np. wariant `[1m]`), ma okno szacowane (najmniejsze pasujące; bez wiedzy 200 tys.,
+  a gdy rozmowa jest większa — 1 mln) i procent z „≈”. Gdy statusline sesji ucichła (sesja zaczęta
+  w CLI, wznowiona w Orce), a transkrypt ma nowszą odpowiedź, kontekst też bierze się z transkryptu.
 - Gdy żadna statusline nie odświeżyła limitów od 5 minut (np. agenci w Orce, IDE, `claude -p`),
   widżet pobiera je sam z `api.anthropic.com/api/oauth/usage` (tego samego endpointu używa panel
-  limitów w Orce) i zapisuje do tego samego `limits.json`.
+  limitów w Orce) i zapisuje do tego samego `limits.json`. Pełny odczyt serwera — czy plan ma okno
+  5 h i limity pojedynczych modeli, których statusline nie zna — trafia do `limits-server.json`
+  i odświeża się co 15 minut także wtedy, gdy statusline działa.
   Używa tokenu logowania Claude Code (`~\.claude\.credentials.json`, z `CLAUDE_CONFIG_DIR`, gdy
   jest ustawiony) **tylko do odczytu**: nigdy go nie odświeża ani nie zapisuje. Token żyje kilka
   godzin; gdy wygaśnie, widżet czeka, aż odnowi go następne uruchomienie Claude Code. Konto
   rozliczane kluczem API nie ma tych limitów, więc widżet wtedy niczego nie pobiera.
 - `ClaudeWidget.exe` (WPF, .NET 10) czyta te pliki i rysuje widżet. Sam zapisuje
-  `limits.json` (gdy pobiera limity z serwera) i `<sesja>.seen.json` — kiedy przejrzałeś
+  `limits.json` i `limits-server.json` (gdy pobiera limity z serwera) i `<sesja>.seen.json` — kiedy przejrzałeś
   wynik — i sprząta pliki sesji zamkniętych bez SessionEnd (zamknięte okno terminala, awaria)
   oraz porzucone pliki starsze niż doba. Sesję
   uznaje za zamkniętą, gdy jej proces nie żyje albo jego PID dostał już inny proces.
@@ -237,7 +252,7 @@ tylko taki, którego zakończenie widżet widział.
 - Limity odświeżają się co ok. 5 minut, dopóki token logowania Claude Code jest ważny (kilka godzin
   od ostatniego użycia Claude); „stan z …” mówi, jak są świeże.
 - Endpoint limitów nie jest oficjalnie udokumentowany. Gdyby się zmienił, widżet wraca do samych
-  danych ze statusline.
+  danych ze statusline (5 h i tydzień); limity modeli zostają z ostatnim odczytem i godziną „stan z …”.
 
 ## Rozwój
 

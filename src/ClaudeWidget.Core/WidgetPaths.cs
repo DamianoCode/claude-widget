@@ -6,7 +6,7 @@ public enum SessionFileKind { State, Usage, Seen }
 /// Gdzie leży stan widżetu. Te same ścieżki co w wersji z Node i PowerShellem, więc znaczniki
 /// przejrzenia, pozycja okna i stan otwartych sesji przechodzą przez aktualizację.
 /// Każda sesja ma osobny plik na piszącego (hook: state, statusline: usage, widżet: seen),
-/// więc nikt nikomu nie nadpisuje pól. Wyjątkiem jest limits.json (statusline i widżet) — patrz AccountLimits.
+/// więc nikt nikomu nie nadpisuje pól. Wyjątkiem jest limits.json (statusline i widżet) — patrz AccountLimits; limits-server.json pisze sam widżet.
 /// </summary>
 public sealed class WidgetPaths
 {
@@ -33,6 +33,12 @@ public sealed class WidgetPaths
     public string WidgetDir => Path.GetDirectoryName(StateDir) ?? StateDir;
 
     public string LimitsFile => Path.Combine(StateDir, "limits.json");
+
+    /// <summary>Pełny odczyt limitów z serwera (patrz <see cref="ServerLimits"/>); pisze go tylko widżet.</summary>
+    public string ServerLimitsFile => Path.Combine(StateDir, "limits-server.json");
+
+    /// <summary>Okno kontekstu według modelu, podpatrzone ze statusline (patrz <see cref="Sessions.ContextWindowMap"/>).</summary>
+    public string ContextWindowsFile => Path.Combine(StateDir, "context-windows.json");
 
     public string ConfigFile => Path.Combine(WidgetDir, "widget-config.json");
 

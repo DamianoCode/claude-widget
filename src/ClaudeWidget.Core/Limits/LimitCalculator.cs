@@ -14,11 +14,12 @@ public static class LimitCalculator
         [LimitWindowKind.SevenDay] = 7 * 86_400_000L,
     };
 
-    public static LimitView GetView(LimitWindow? limit, LimitWindowKind window, long? measuredAt, long nowMs, bool panel)
+    /// <param name="window">Długość okna; null (nieznane okno limitu modelu) — bez prognozy tempa.</param>
+    public static LimitView GetView(LimitWindow? limit, LimitWindowKind? window, long? measuredAt, long nowMs, bool panel)
     {
         if (limit?.Pct is not double pct) return new LimitView();
 
-        var withDay = window == LimitWindowKind.SevenDay;
+        var withDay = window != LimitWindowKind.FiveHour;
         long? resetMs = limit.ResetsAt is double resetsAtSeconds ? (long)(resetsAtSeconds * 1000) : null;
         if (resetMs is long resetAtBoundary && nowMs >= resetAtBoundary)
         {
@@ -26,9 +27,9 @@ public static class LimitCalculator
         }
 
         long? exhaustMs = null;
-        if (resetMs is long resetAt && measuredAt is long measured && pct > 0)
+        if (resetMs is long resetAt && measuredAt is long measured && pct > 0 && window is LimitWindowKind kind)
         {
-            var windowMs = WindowMs[window];
+            var windowMs = WindowMs[kind];
             var startMs = resetAt - windowMs;
             var elapsed = (double)(measured - startMs) / windowMs;
             // Na samym początku okna tempo jest jeszcze szumem.

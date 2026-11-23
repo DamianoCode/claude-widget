@@ -72,6 +72,21 @@ public sealed class FormattingTests
         Assert.Equal("brak danych o limitach", Formatting.GetFreshnessText(0));
     }
 
+    [Theory]
+    [InlineData("server", " · z serwera")]
+    [InlineData("statusline", " · ze statusline")]
+    [InlineData(null, "")]
+    [InlineData("coś", "")]
+    public void GetFreshnessText_names_the_source_when_known(string? source, string suffix)
+    {
+        var now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+        Assert.Equal(Formatting.GetFreshnessText(now) + suffix, Formatting.GetFreshnessText(now, source));
+    }
+
+    [Fact]
+    public void GetFreshnessText_without_data_ignores_source() =>
+        Assert.Equal("brak danych o limitach", Formatting.GetFreshnessText(null, "server"));
+
     [Fact]
     public void GetFreshnessText_today_shows_time_only()
     {

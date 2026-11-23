@@ -85,8 +85,13 @@ public sealed class MeterControl
         _note = new TextBlock();
     }
 
-    public void Set(double? pct, string note, string color)
+    /// <param name="tooltipUnit">
+    /// Słowo do podpowiedzi wersji zwartej („66% zostało”) — wyspa nie ma miejsca na nagłówek z trybem.
+    /// </param>
+    /// <param name="approximate">Procent szacunkowy — z „≈” przed liczbą.</param>
+    public void Set(double? pct, string note, string color, string? tooltipUnit = null, bool approximate = false)
     {
+        string? valueText = null;
         if (pct is null)
         {
             _value.Text = "—";
@@ -95,11 +100,17 @@ public sealed class MeterControl
         else
         {
             var clamped = Math.Max(0, Math.Min(100, pct.Value));
-            _value.Text = $"{clamped:0}%";
+            valueText = approximate ? $"≈{clamped:0}%" : $"{clamped:0}%";
+            _value.Text = valueText;
             _fill.Width = _width * clamped / 100;
             _fill.Background = Brushes.Brush(color);
         }
         _note.Text = note;
-        if (_compact) Root.ToolTip = string.IsNullOrEmpty(note) ? null : note;
+        if (_compact)
+        {
+            var head = valueText is not null && tooltipUnit is not null ? $"{valueText} {tooltipUnit}" : null;
+            var tip = string.Join(" · ", new[] { head, note }.Where(part => !string.IsNullOrEmpty(part)));
+            Root.ToolTip = tip.Length == 0 ? null : tip;
+        }
     }
 }

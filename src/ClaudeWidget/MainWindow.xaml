@@ -94,8 +94,14 @@
           <TextBlock x:Name="StatusLabel" FontSize="14" FontWeight="SemiBold" Foreground="#8A8A8A"/>
           <TextBlock x:Name="StatusDetail" FontSize="12" Foreground="#A6A6A6" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
           <TextBlock x:Name="SessionLine" FontSize="11" Foreground="#767676" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+          <StackPanel x:Name="ContextMeter" Margin="0,10,0,0"/>
         </StackPanel>
-        <Border Height="1" Background="#0FFFFFFF" Margin="0,12,0,12"/>
+        <Border Height="1" Background="#0FFFFFFF" Margin="0,12,0,10"/>
+        <!-- Jeden znacznik trybu dla wszystkich pasków limitów poniżej, jak w nagłówku panelu. -->
+        <Grid Margin="2,0,2,6">
+          <TextBlock Text="Limity" FontSize="10.5" Foreground="#767676"/>
+          <TextBlock x:Name="CardLimitMode" FontSize="10.5" Foreground="#A6A6A6" HorizontalAlignment="Right"/>
+        </Grid>
         <StackPanel x:Name="Meters" Margin="2,0,2,0"/>
         <TextBlock x:Name="Freshness" FontSize="10.5" Foreground="#626262" HorizontalAlignment="Center" Margin="0,2,0,0"/>
       </StackPanel>
@@ -172,13 +178,21 @@
                   <TextBlock x:Name="PanelCount" FontSize="11" Foreground="#C8C8C8"/>
                 </Border>
               </StackPanel>
-              <TextBlock x:Name="PanelFreshness" FontSize="11" Foreground="#767676" HorizontalAlignment="Right" VerticalAlignment="Center"/>
             </Grid>
             <StackPanel x:Name="SessionList"/>
             <Border Height="1" Background="#0FFFFFFF" Margin="0,12,0,12"/>
+            <Grid Margin="2,0,2,8">
+              <TextBlock Text="Limity konta" FontSize="11" Foreground="#8A8A8A" VerticalAlignment="Center"/>
+              <Border x:Name="LimitModeToggle" HorizontalAlignment="Right" CornerRadius="9" Background="#14FFFFFF"
+                      Padding="8,1,8,2" Cursor="Hand"
+                      ToolTip="Przełącz: ile limitu zużyto albo ile zostało do resetu">
+                <TextBlock x:Name="LimitModeText" FontSize="11" Foreground="#C8C8C8"/>
+              </Border>
+            </Grid>
             <StackPanel x:Name="PanelLimits" Margin="2,0,2,0"/>
+            <TextBlock x:Name="PanelFreshness" FontSize="11" Foreground="#767676" Margin="2,0,2,0"/>
             <TextBlock x:Name="StatusLineHint" FontSize="11" Foreground="#FFB224" Margin="2,10,2,0" TextWrapping="Wrap" Visibility="Collapsed">
-              Kontekst sesji jest niedostępny: Twoja statusline nie przekazuje danych widżetowi.
+              Twoja statusline nie przekazuje danych widżetowi: kontekst sesji liczę z transkryptu, więc procent bywa przybliżony.
               <Hyperlink x:Name="StatusLineHelp" Foreground="#FFD27A"
                          NavigateUri="https://github.com/DamianoCode/claude-widget#gdy-masz-już-własną-statusline">Jak to naprawić</Hyperlink>
             </TextBlock>

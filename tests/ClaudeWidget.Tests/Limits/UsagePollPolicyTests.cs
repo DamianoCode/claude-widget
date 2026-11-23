@@ -25,11 +25,48 @@ public sealed class UsagePollPolicyTests
     }
 
     [Fact]
+    public void Full_server_reading_is_refreshed_even_while_the_statusline_is_fresh()
+    {
+        var statusline = Limits(Now - 1 * Minute);
+        ServerLimits Server(long fetchedAt, params ScopedLimit[] scoped) =>
+            new() { FetchedAt = fetchedAt, Scoped = scoped.Length > 0 ? [.. scoped] : null };
+
+        Assert.True(UsagePollPolicy.IsFresh(statusline, Server(Now - 14 * Minute), Now));
+        Assert.False(UsagePollPolicy.IsFresh(statusline, Server(Now - 15 * Minute), Now));
+        // Bez pełnego odczytu nie wiadomo, które limity obowiązują — pytamy od razu.
+        Assert.False(UsagePollPolicy.IsFresh(statusline, null, Now));
+        // Stary limits.json i tak wymaga zapytania.
+        Assert.False(UsagePollPolicy.IsFresh(Limits(Now - 6 * Minute), Server(Now - 1 * Minute), Now));
+
+        // Reset limitu modelu, który minął po odczycie — jego procent jest nieaktualny.
+        var reset = new ScopedLimit { Label = "Fable", Group = "weekly", Pct = 80, ResetsAt = (Now - 30_000) / 1000.0 };
+        Assert.False(UsagePollPolicy.IsFresh(statusline, Server(Now - 2 * Minute, reset), Now));
+        Assert.True(UsagePollPolicy.IsFresh(statusline, Server(Now - 10_000, reset), Now));
+    }
+
+    [Fact]
     public void Reading_from_before_a_reset_that_passed_is_not_fresh()
     {
         var resetSeconds = (Now - 30_000) / 1000.0;
         Assert.False(UsagePollPolicy.IsFresh(Limits(Now - 1 * Minute, resetSeconds), Now));
         Assert.True(UsagePollPolicy.IsFresh(Limits(Now - 10_000, resetSeconds), Now));
+    }
+
+    [Fact]
+    public void Server_reading_deadline_and_model_resets_bring_the_next_poll_forward()
+    {
+        // Statusline odświeża limits.json, więc jego termin ciągle się odsuwa — decyduje wiek odczytu serwera.
+        var server = new ServerLimits { FetchedAt = Now - 14 * Minute };
+        Assert.Equal(TimeSpan.FromMinutes(1), UsagePollPolicy.NextDelay(UsagePollOutcome.Fresh, Limits(Now - 1 * Minute), Now, server: server));
+
+        // Reset limitu modelu za 2 minuty — pytamy tuż po nim.
+        var scoped = new ServerLimits
+        {
+            FetchedAt = Now - 1 * Minute,
+            Scoped = [new ScopedLimit { Label = "Fable", Group = "weekly", Pct = 90, ResetsAt = (Now + 2 * Minute) / 1000.0 }],
+        };
+        Assert.Equal(TimeSpan.FromMinutes(2) + UsagePollPolicy.AfterReset,
+            UsagePollPolicy.NextDelay(UsagePollOutcome.Fresh, Limits(Now), Now, server: scoped));
     }
 
     [Fact]

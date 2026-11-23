@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ClaudeWidget.Core.Limits;
 
 namespace ClaudeWidget.Core.Settings;
 
@@ -60,6 +61,11 @@ public sealed record WidgetConfig
 
     /// <summary>Krycie karty widżetu w procentach (30–100); pod kursorem zawsze pełne.</summary>
     public int? Opacity { get; init; }
+
+    /// <summary>Paski limitów: <c>used</c> (ile zużyto, domyślnie) albo <c>left</c> (ile zostało).</summary>
+    public string? LimitDisplay { get; init; }
+
+    [JsonIgnore] public LimitDisplayMode LimitMode => Limits.LimitDisplay.Parse(LimitDisplay);
 
     [JsonIgnore] public DockEdge DockEdge => Docking.Parse(Dock);
 

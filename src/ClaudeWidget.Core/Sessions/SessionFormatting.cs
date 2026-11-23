@@ -45,7 +45,10 @@ public static class SessionFormatting
     {
         if (session is { ContextTokens: double tokens, ContextSize: double size })
         {
-            return $"{Formatting.FormatTokens(tokens)} / {Formatting.FormatTokens(size)}";
+            // Okno zgadnięte (model jeszcze nie widziany w statusline) — procent jest przybliżony.
+            return session.ContextEstimated
+                ? $"{Formatting.FormatTokens(tokens)} / ok. {Formatting.FormatTokens(size)}"
+                : $"{Formatting.FormatTokens(tokens)} / {Formatting.FormatTokens(size)}";
         }
         return "";
     }
