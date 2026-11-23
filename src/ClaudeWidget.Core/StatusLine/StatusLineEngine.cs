@@ -29,6 +29,13 @@ public static class StatusLineEngine
                 UpdatedAt = nowMs,
             };
             JsonStore.Write(path, usage, StateJson.Default.SessionUsage);
+
+            // Rozmiar okna zna tylko statusline — zapamiętany dla modelu przyda się sesjom bez niej.
+            var learned = Sessions.ContextWindows.With(
+                JsonStore.Read(paths.ContextWindowsFile, Sessions.ContextWindowJson.Default.ContextWindowMap),
+                GetString(GetProperty(data, "model"), "id"),
+                usage.ContextSize);
+            if (learned is not null) JsonStore.Write(paths.ContextWindowsFile, learned, Sessions.ContextWindowJson.Default.ContextWindowMap);
         }
 
         // Limity są wspólne dla całego konta, więc wystarczy ostatni odczyt z dowolnej sesji.

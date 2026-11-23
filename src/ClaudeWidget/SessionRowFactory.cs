@@ -91,13 +91,15 @@ public static class SessionRowFactory
             var pct = Math.Max(0, Math.Min(100, contextPct));
             // Kontekst blisko pełnego zapowiada automatyczne streszczanie rozmowy.
             var valueColor = pct >= 80 ? "#FFB224" : "#C8C8C8";
-            var value = new TextBlock { Text = $"{pct:0}%", FontSize = 12, Foreground = Brushes.Brush(valueColor), HorizontalAlignment = HorizontalAlignment.Right };
+            var value = new TextBlock { Text = session.ContextEstimated ? $"≈{pct:0}%" : $"{pct:0}%", FontSize = 12, Foreground = Brushes.Brush(valueColor), HorizontalAlignment = HorizontalAlignment.Right };
             Typography.SetNumeralAlignment(value, FontNumeralAlignment.Tabular);
             var track = new Border { Width = 48, Height = 3, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 4, 0, 0), Background = Brushes.Brush("#14FFFFFF") };
             var fill = new Border { Height = 3, Width = 48 * pct / 100, HorizontalAlignment = HorizontalAlignment.Left, Background = Brushes.Brush(pct >= 80 ? "#FFB224" : "#BDBDBD") };
             track.Child = fill;
             usage.Children.Add(value);
             usage.Children.Add(track);
+            var note = SessionFormatting.GetContextNote(session);
+            usage.ToolTip = note.Length == 0 ? "Kontekst sesji" : $"Kontekst sesji: {note}";
         }
 
         grid.Children.Add(dot);

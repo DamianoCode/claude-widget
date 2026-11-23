@@ -37,6 +37,9 @@ public sealed class WidgetPaths
     /// <summary>Pełny odczyt limitów z serwera (patrz <see cref="ServerLimits"/>); pisze go tylko widżet.</summary>
     public string ServerLimitsFile => Path.Combine(StateDir, "limits-server.json");
 
+    /// <summary>Okno kontekstu według modelu, podpatrzone ze statusline (patrz <see cref="Sessions.ContextWindowMap"/>).</summary>
+    public string ContextWindowsFile => Path.Combine(StateDir, "context-windows.json");
+
     public string ConfigFile => Path.Combine(WidgetDir, "widget-config.json");
 
     public string LogFile => Path.Combine(WidgetDir, "widget.log");

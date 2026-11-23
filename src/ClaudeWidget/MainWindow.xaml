@@ -192,7 +192,7 @@
             <StackPanel x:Name="PanelLimits" Margin="2,0,2,0"/>
             <TextBlock x:Name="PanelFreshness" FontSize="11" Foreground="#767676" Margin="2,0,2,0"/>
             <TextBlock x:Name="StatusLineHint" FontSize="11" Foreground="#FFB224" Margin="2,10,2,0" TextWrapping="Wrap" Visibility="Collapsed">
-              Kontekst sesji jest niedostępny: Twoja statusline nie przekazuje danych widżetowi.
+              Twoja statusline nie przekazuje danych widżetowi: kontekst sesji liczę z transkryptu, więc procent bywa przybliżony.
               <Hyperlink x:Name="StatusLineHelp" Foreground="#FFD27A"
                          NavigateUri="https://github.com/DamianoCode/claude-widget#gdy-masz-już-własną-statusline">Jak to naprawić</Hyperlink>
             </TextBlock>

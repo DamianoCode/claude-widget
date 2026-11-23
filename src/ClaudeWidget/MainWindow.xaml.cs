@@ -268,7 +268,8 @@ public partial class MainWindow : Window, ISettingsHost
         _islandLimits.Update(limitRows.Take(2), limitMode);
         CardLimitMode.Text = LimitDisplay.Word(limitMode);
         var contextPct = focus?.ContextPct;
-        _mContext.Set(contextPct, SessionFormatting.GetContextNote(focus), contextPct >= 80 ? "#FFB224" : "#BDBDBD");
+        _mContext.Set(contextPct, SessionFormatting.GetContextNote(focus), contextPct >= 80 ? "#FFB224" : "#BDBDBD",
+            approximate: focus?.ContextEstimated == true);
         Freshness.Text = Formatting.GetFreshnessText(measuredAt, limits?.Source);
 
         // Obramowanie ostrzega przed końcem limitu także w widoku mini, bez najeżdżania.
@@ -297,7 +298,7 @@ public partial class MainWindow : Window, ISettingsHost
         // Wiersze buduje się od nowa tylko, gdy zmieni się to, co pokazują — inaczej podświetlenie
         // pod kursorem migałoby co sekundę.
         var signature = string.Join('\n', sessions.Select(s =>
-            $"{s.Id}|{s.Kind}|{SessionFormatting.GetSessionMeta(s, nowMs)}|{s.Name}|{s.ContextPct}|{s.Summary}"));
+            $"{s.Id}|{s.Kind}|{SessionFormatting.GetSessionMeta(s, nowMs)}|{s.Name}|{s.ContextPct:0}|{s.ContextEstimated}|{s.Summary}"));
         if (signature != _panelSignature)
         {
             _panelSignature = signature;

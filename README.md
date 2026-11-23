@@ -12,7 +12,8 @@ w kilku sesjach naraz (np. na różnych worktree) i łatwo zapomnieć, że któr
 Każde światło ma licznik sesji w danym stanie. Sesja bezczynna, której wynik już widziałeś,
 niczego nie zapala. Obok: limity konta, które obowiązują na Twoim planie — 5 h (plany bez tego
 okna, np. Max 20x, go nie widzą), tygodniowy i limity pojedynczych modeli, np. Fable — z prognozą,
-czy wystarczą do resetu, oraz zajętość kontekstu każdej sesji.
+czy wystarczą do resetu, oraz zajętość kontekstu każdej sesji — także tych z Orki, IDE i w tle,
+w których statusline się nie uruchamia.
 
 ## Instalacja
 
@@ -52,8 +53,8 @@ oddaje je sam, więc Twoja statusline działa i bez widżetu. Odinstalowanie prz
 w oryginale; widżet sprawdza to też przy każdym starcie (np. gdy odinstalujesz Git Bash).
 
 W pozostałych przypadkach (złożona komenda, brak Git Bash — wtedy Claude Code uruchamia statusline
-przez PowerShell) widżet pokazuje limity (pobiera je sam), ale bez procentu kontekstu sesji,
-a panel pokazuje podpowiedź. Wystarczy
+przez PowerShell) widżet pokazuje limity (pobiera je sam), a kontekst sesji liczy z jej transkryptu — procent bywa
+wtedy przybliżony („≈”), a panel pokazuje podpowiedź. Wystarczy
 jedna linia na początku Twojego skryptu, która przekaże mu wejście (wyjście przekaźnika się
 wyrzuca, więc wygląd zostaje):
 
@@ -205,7 +206,12 @@ Gdy Orca nie odpowiada, zostaje samo wyciągnięte okno, a przyczyna trafia do `
   `~\.claude\widget\state\<sesja>.state.json`. To mały program skompilowany z góry (Native AOT),
   więc startuje w kilkadziesiąt milisekund i nie potrzebuje Node ani runtime .NET.
 - `ClaudeWidgetHook.exe statusline` to jednocześnie linia statusu w terminalu i źródło danych
-  o kontekście sesji oraz limitach konta (`<sesja>.usage.json`, `limits.json`).
+  o kontekście sesji oraz limitach konta (`<sesja>.usage.json`, `limits.json`). Zapamiętuje też
+  rozmiar okna kontekstu każdego modelu (`context-windows.json`).
+- Sesje bez statusline (Orca, Agent SDK, IDE, sesje w tle) mają kontekst z końcówki transkryptu
+  (`~\.claude\projects\…\<sesja>.jsonl`): wejście ostatniej odpowiedzi. Okno kontekstu bierze się
+  z `context-windows.json`; model, którego żadna statusline jeszcze nie podała, ma okno szacowane
+  (200 tys., a gdy rozmowa jest większa — 1 mln) i procent z „≈”.
 - Gdy żadna statusline nie odświeżyła limitów od 5 minut (np. agenci w Orce, IDE, `claude -p`),
   widżet pobiera je sam z `api.anthropic.com/api/oauth/usage` (tego samego endpointu używa panel
   limitów w Orce) i zapisuje do tego samego `limits.json`. Pełny odczyt serwera — czy plan ma okno

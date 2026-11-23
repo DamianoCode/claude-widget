@@ -88,7 +88,8 @@ public sealed class MeterControl
     /// <param name="tooltipUnit">
     /// Słowo do podpowiedzi wersji zwartej („66% zostało”) — wyspa nie ma miejsca na nagłówek z trybem.
     /// </param>
-    public void Set(double? pct, string note, string color, string? tooltipUnit = null)
+    /// <param name="approximate">Procent szacunkowy — z „≈” przed liczbą.</param>
+    public void Set(double? pct, string note, string color, string? tooltipUnit = null, bool approximate = false)
     {
         string? valueText = null;
         if (pct is null)
@@ -99,7 +100,7 @@ public sealed class MeterControl
         else
         {
             var clamped = Math.Max(0, Math.Min(100, pct.Value));
-            valueText = $"{clamped:0}%";
+            valueText = approximate ? $"≈{clamped:0}%" : $"{clamped:0}%";
             _value.Text = valueText;
             _fill.Width = _width * clamped / 100;
             _fill.Background = Brushes.Brush(color);

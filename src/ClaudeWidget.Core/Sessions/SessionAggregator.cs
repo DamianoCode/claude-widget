@@ -11,6 +11,16 @@ namespace ClaudeWidget.Core.Sessions;
 public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe probe)
 {
     private readonly InterruptedTurn _interrupted = new();
+    private readonly TranscriptContext _context = new();
+
+    // Na czas jednego GetSessions: okna modeli ze statusline i transkrypty, z których czytano kontekst.
+    private ContextWindowMap? _windows;
+    private readonly HashSet<string> _contextTranscripts = new(StringComparer.Ordinal);
+
+    /// <summary>Katalog konfiguracji Claude Code — stąd ścieżki transkryptów sesji z listy agentów.</summary>
+    public string ClaudeConfigDir { get; init; } = Limits.OAuthUsage.ConfigDir(
+        Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"),
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
     // Sesja bez PID (sprzed wersji hooka z PID) i bez zdarzeń od 12 h najpewniej już nie istnieje.
     private const long StaleMs = 12 * 3_600_000L;
@@ -30,6 +40,8 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
         var sessions = new List<SessionInfo>();
         if (!Directory.Exists(paths.StateDir)) return sessions;
         var transcripts = new HashSet<string>(StringComparer.Ordinal);
+        _contextTranscripts.Clear();
+        _windows = JsonStore.Read(paths.ContextWindowsFile, ContextWindowJson.Default.ContextWindowMap);
 
         foreach (var file in Directory.EnumerateFiles(paths.StateDir, "*.state.json"))
         {
@@ -82,6 +94,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                 if (label.Workspace.Length > 0) project = label.Workspace;
             }
 
+            var context = ContextOf(usage, state.TranscriptPath);
             sessions.Add(new SessionInfo
             {
                 Id = id,
@@ -94,15 +107,17 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                 Project = project,
                 Cwd = state.Cwd ?? "",
                 Name = name,
-                ContextPct = usage?.ContextPct,
-                ContextTokens = usage?.ContextTokens,
-                ContextSize = usage?.ContextSize,
+                ContextPct = context.Pct,
+                ContextTokens = context.Tokens,
+                ContextSize = context.Size,
+                ContextEstimated = context.Estimated,
                 Orca = Ide.OrcaPlace.From(state.OrcaSessionId, state.OrcaTerminal),
             });
         }
 
-        _interrupted.Retain(transcripts);
         MergeAgentSessions(sessions, agents, nowMs);
+        _interrupted.Retain(transcripts);
+        _context.Retain(_contextTranscripts);
 
         return sessions
             .OrderByDescending(session => SessionKindCatalog.Kinds[session.Kind].Rank)
@@ -162,7 +177,7 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                     Name = !string.IsNullOrEmpty(entry.Name) ? entry.Name : entry.Id,
                     IsBackground = true,
                     ShortId = entry.Id,
-                });
+                }.WithContext(ContextOf(null, TranscriptContext.GuessPath(ClaudeConfigDir, entry.Cwd, id))));
             }
             else if (!known.ContainsKey(id) && entry.Pid is int entryPid && probe.Get(entryPid) is not null)
             {
@@ -179,12 +194,23 @@ public sealed partial class SessionAggregator(WidgetPaths paths, IProcessProbe p
                     Project = project,
                     Cwd = entry.Cwd ?? "",
                     Name = !string.IsNullOrEmpty(usage?.Name) ? usage.Name : project,
-                    ContextPct = usage?.ContextPct,
-                    ContextTokens = usage?.ContextTokens,
-                    ContextSize = usage?.ContextSize,
-                });
+                }.WithContext(ContextOf(usage, TranscriptContext.GuessPath(ClaudeConfigDir, entry.Cwd, id))));
             }
         }
+    }
+
+    /// <summary>
+    /// Kontekst sesji: ze statusline, gdy go podała (dokładny), a inaczej z transkryptu — tak widać
+    /// go też w sesjach z Orki, IDE i w tle, gdzie statusline się nie uruchamia.
+    /// </summary>
+    private SessionContext ContextOf(SessionUsage? usage, string? transcriptPath)
+    {
+        if (usage?.ContextPct is double pct) return new SessionContext(pct, usage.ContextTokens, usage.ContextSize, false);
+        if (string.IsNullOrEmpty(transcriptPath)) return SessionContext.None;
+        _contextTranscripts.Add(transcriptPath);
+        if (_context.Read(transcriptPath) is not { } read) return SessionContext.None;
+        var (size, estimated) = ContextWindows.Resolve(read.Model, read.Tokens, _windows);
+        return new SessionContext(Math.Min(100, read.Tokens * 100 / size), read.Tokens, size, estimated);
     }
 
     /// <summary>Lista agentów udana i świeża — bez niej sesji w tle po prostu nie widać.</summary>
