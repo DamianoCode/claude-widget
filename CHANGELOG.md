@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.1](https://github.com/DamianoCode/claude-widget/compare/v1.12.0...v1.12.1) (2026-11-23)
+
+
+### Poprawki
+
+* kontekst sesji z oknem modelu wg dokumentacji, nie zgadywane 200 tys. ([f1a1774](https://github.com/DamianoCode/claude-widget/commit/f1a17744f92d895efb387dffd681ec376a5a1aee))
+* kontekst sesji z oknem modelu wg dokumentacji, nie zgadywane 200 tys. ([3c9d42c](https://github.com/DamianoCode/claude-widget/commit/3c9d42c20b638bf55e2d82aa821e1a3fde2e9fd1))
+
 ## [1.12.0](https://github.com/DamianoCode/claude-widget/compare/v1.11.0...v1.12.0) (2026-11-23)
 
 
