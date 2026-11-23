@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.12.0](https://github.com/DamianoCode/claude-widget/compare/v1.11.0...v1.12.0) (2026-11-23)
+
+
+### Nowe funkcje
+
+* kontekst sesji także w Orce, IDE i sesjach w tle ([186c28d](https://github.com/DamianoCode/claude-widget/commit/186c28d8d66509d7af2920f7c024f765a007ee0e))
+* limity „zużyte / zostało”, limity modeli i kontekst sesji w Orce ([1ea4ff7](https://github.com/DamianoCode/claude-widget/commit/1ea4ff7c99fb0c474ae2938fe0a03ea9728a8297))
+* limity „zużyte / zostało”, tylko te z planu i limity modeli ([908040f](https://github.com/DamianoCode/claude-widget/commit/908040fc7e00f3ebab4fdd2159ebbff226188ff7))
+
+
+### Poprawki
+
+* poprawki z przeglądu kontekstu i limitów ([6e64345](https://github.com/DamianoCode/claude-widget/commit/6e6434520bc1ea08b3e11b3b54e9b02232558973))
+
 ## [1.11.0](https://github.com/DamianoCode/claude-widget/compare/v1.10.0...v1.11.0) (2026-11-20)
 
 
